@@ -1,0 +1,9 @@
+# Palette intégrée : aucun fichier de fond d'écran externe n'est requis.
+[theme]
+mode = "dark"
+source = "builtin"
+builtin = "Noctalia"
+
+[wallpaper]
+enabled = true
+fill_color = "surface"

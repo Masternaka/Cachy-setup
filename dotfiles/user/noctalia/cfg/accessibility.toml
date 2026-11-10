@@ -1,0 +1,5 @@
+# Agrandissement des panneaux, du lanceur et des interfaces hors barre.
+# Ne modifie ni l'échelle de la barre ni celle des écrans dans Umbriel.
+# Valeur par défaut de Noctalia : 1.0.
+[accessibility]
+ui_scale = 1.20

@@ -1,0 +1,4 @@
+[appearance]
+scheme = "Noctalia"
+# Conserver l'affichage par défaut du paquet. La section [clock] des docs
+# rolling n'est pas reconnue par Greeter 1.6.0 (paquet CachyOS relevé).

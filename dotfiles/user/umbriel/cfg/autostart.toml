@@ -1,0 +1,5 @@
+[general]
+autostart = ["noctalia"]
+mod_key = "Super"
+xwayland = true
+show_cheatsheet = true

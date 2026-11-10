@@ -1,0 +1,7 @@
+[layout]
+mode = "scrolling"
+gap = 8
+extent_presets = [0.333, 0.5, 0.667]
+
+[layout.scrolling]
+default_extent_fraction = 0.5

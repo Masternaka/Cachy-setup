@@ -1,0 +1,10 @@
+# Ces deux valeurs sont remplacées dans la copie installée, jamais dans le dépôt.
+[input.keyboard]
+layout = "@KEYBOARD@"
+variant = "@VARIANT@"
+repeat_rate = 30
+repeat_delay = 400
+
+[input.touchpad]
+tap = true
+natural_scroll = true

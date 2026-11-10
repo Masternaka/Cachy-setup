@@ -1,0 +1,5 @@
+# Intervalle des relevés GPU lorsque leurs statistiques sont affichées.
+# Valeur par défaut de Noctalia : 5.0 secondes ; 0 désactive les relevés GPU.
+# Ce réglage n'ajoute pas de widget GPU à la barre.
+[system.monitor]
+gpu_poll_seconds = 2.0

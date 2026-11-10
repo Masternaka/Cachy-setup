@@ -1,0 +1,10 @@
+[include]
+files = [
+  "cfg/bar.toml",
+  "cfg/widgets.toml",
+  "cfg/shell.toml",
+  "cfg/theme.toml",
+  "cfg/capture.toml",
+ #"cfg/accessibility.toml",
+ #"cfg/monitoring.toml",
+]

@@ -1,0 +1,16 @@
+# Point d'entrée : les chemins sont relatifs à ce fichier.
+[include]
+files = [
+  "cfg/autostart.toml",
+  "cfg/input.toml",
+  "cfg/display.toml",
+  "cfg/layout.toml",
+  "cfg/appearance.toml",
+  "cfg/rules.toml",
+  "cfg/keybinds.toml",
+  "cfg/workspaces.toml",
+  "cfg/media.toml",
+]
+
+[include.optional]
+files = ["local.toml"]

@@ -1,0 +1,5 @@
+# Capture intégrée à Noctalia : aucune commande ou application tierce.
+[shell.screenshot]
+copy_to_clipboard = true
+save_to_file = false
+pipe_to_command = false

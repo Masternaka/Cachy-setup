@@ -1,0 +1,18 @@
+[[window_rule]]
+match.app_id = "^dev.noctalia.Noctalia$"
+default_floating = true
+
+[[window_rule]]
+match.app_id = "^dev.noctalia.UmbrielSharePicker$"
+default_floating = true
+
+[[layer_rule]]
+match.namespace = '^noctalia-(bar-[^"]+|notification|dock|panel|attached-panel|osd)$'
+blur = true
+blur_ignore_alpha = 0.6
+
+# Les panneaux s'ouvrent au-dessus des fenêtres : flouter leur contenu réel.
+# La barre garde le flou optimisé du fond d'écran pour limiter le coût GPU.
+[[layer_rule]]
+match.namespace = '^noctalia-(notification|dock|panel|attached-panel|osd)$'
+blur_optimized = false

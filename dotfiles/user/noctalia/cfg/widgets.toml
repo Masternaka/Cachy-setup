@@ -1,0 +1,5 @@
+[widget.clock]
+format = "{:%H:%M — %d/%m/%Y}"
+
+[widget.media]
+hide_when_no_media = true

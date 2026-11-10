@@ -1,0 +1,9 @@
+[keybinds]
+"XF86AudioRaiseVolume" = { action = "spawn noctalia msg volume-up", allow_when_locked = true }
+"XF86AudioLowerVolume" = { action = "spawn noctalia msg volume-down", allow_when_locked = true }
+"XF86AudioMute" = { action = "spawn noctalia msg volume-mute", repeat = false }
+"XF86AudioPlay" = { action = "spawn noctalia msg media toggle", repeat = false }
+"XF86AudioNext" = "spawn noctalia msg media next"
+"XF86AudioPrev" = "spawn noctalia msg media previous"
+"XF86MonBrightnessUp" = "spawn noctalia msg brightness-up"
+"XF86MonBrightnessDown" = "spawn noctalia msg brightness-down"

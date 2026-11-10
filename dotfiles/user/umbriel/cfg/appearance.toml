@@ -1,0 +1,11 @@
+[appearance]
+border_width = 2
+corner_radius = 10
+
+[appearance.blur]
+enabled = true
+radius = 3
+
+# Noctalia anime lui-même ses panneaux.
+[animation.layers]
+enabled = false

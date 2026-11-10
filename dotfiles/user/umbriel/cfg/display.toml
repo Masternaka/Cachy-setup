@@ -1,0 +1,5 @@
+# Aucun connecteur, mode ou GPU imposé : détection automatique d'Umbriel.
+# Examiner `umbriel outputs`, puis mettre les réglages matériels dans local.toml.
+# Exemple à adapter :
+# [output."DP-1"]
+# scale = 1.25

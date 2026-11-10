@@ -1,0 +1,31 @@
+[keybinds]
+"Mod+Return" = { action = "spawn kitty", repeat = false }
+"Mod+E" = { action = "spawn thunar", repeat = false }
+"Mod+B" = { action = "spawn firefox", repeat = false }
+"Mod+Shift+E" = { action = "spawn mousepad", repeat = false }
+"Mod+Space" = { action = "spawn noctalia msg panel-toggle launcher", repeat = false }
+"Mod+S" = { action = "spawn noctalia msg panel-toggle control-center", repeat = false }
+"Mod+Comma" = { action = "spawn noctalia msg settings-toggle", repeat = false }
+"Mod+V" = { action = "spawn noctalia msg panel-toggle clipboard", repeat = false }
+"Mod+Escape" = { action = "spawn noctalia msg panel-toggle session", repeat = false }
+"Mod+Alt+L" = { action = "spawn noctalia msg session lock", repeat = false }
+"Mod+Ctrl+Escape" = { action = "session-quit", repeat = false }
+# Sortir du mode d'inhibition utilisé par certains jeux et machines virtuelles.
+"Mod+Shift+Escape" = { action = "shortcuts-inhibit-toggle", allow_when_inhibited = true, repeat = false }
+"Alt+Tab" = "spawn noctalia msg window-switcher hold"
+"Alt+Shift+Tab" = "spawn noctalia msg window-switcher hold reverse"
+"Print" = { action = "spawn noctalia msg screenshot-region", repeat = false }
+"Shift+Print" = { action = "spawn noctalia msg screenshot-fullscreen", repeat = false }
+"Mod+Q" = { action = "window-close", repeat = false }
+"Mod+Left" = "window-focus-left"
+"Mod+Right" = "window-focus-right"
+"Mod+Up" = "window-focus-up"
+"Mod+Down" = "window-focus-down"
+"Mod+Shift+Left" = "column-move-left"
+"Mod+Shift+Right" = "column-move-right"
+"Mod+Shift+Up" = "window-move-up"
+"Mod+Shift+Down" = "window-move-down"
+"Mod+F" = { action = "window-toggle-fullscreen", repeat = false }
+"Mod+T" = { action = "window-toggle-floating", repeat = false }
+"Mod+R" = "window-cycle-primary-extent"
+"Mod+O" = { action = "overview-toggle", repeat = false }

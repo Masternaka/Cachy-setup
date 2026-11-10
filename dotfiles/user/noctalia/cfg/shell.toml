@@ -1,0 +1,9 @@
+[shell]
+polkit_agent = true
+clipboard_enabled = true
+clipboard_history_max_entries = 100
+# Le shell démarre par l'autostart d'Umbriel, sans unité Noctalia supplémentaire.
+launch_apps_as_systemd_services = false
+
+[shell.greeter_sync]
+auto_sync = false
