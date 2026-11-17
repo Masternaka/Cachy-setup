@@ -1,197 +1,367 @@
 #!/usr/bin/env bash
-
+# Adapté de Masternaka/CachyOS, 10 - disk_setup.sh, consulté le 17 novembre 2026.
+# Blob de référence : 175644549a28c9fcb3c1f1981eed1ae248c3294e.
+# Labels et propriété des quatre volumes de données ext4 de Gabriel.
+# Aperçu par défaut ; voir docs/disques.md avant toute application.
 set -euo pipefail
+export LC_ALL=C PATH=/usr/bin:/bin
 
-# AJOUTER ICI LES QUATRE UUID ext4 (lsblk -f).
+OWNER=gabriel
 UUIDS=(
-  ""
-  ""
-  ""
-  ""
+    58cdcfb4-b7c7-45aa-9d27-97d3567e77ba
+    7c61158b-ac8c-42e6-90ed-1f659acf4335
+    cab0291d-9a2a-4110-a02f-6783238dcda3
+    d594fd69-fb7d-485a-aab4-272da6bee7e0
 )
+LABELS=('Backup Medias' 'Disque Samsung' 'Medias' 'SSD')
+FSTAB=/etc/fstab
+BOOT_MOUNT_OPTIONS=defaults,nofail
 
-# Facultatif : vide = conserver le label actuel (ou Disque1… s'il est absent).
-# Un label ext4 est limité à 16 octets. Ne pas mettre de « / ».
-LABELS=("" "" "" "")
-
-# Vide = le compte qui lance le script. Lancer sans sudo devant bash.
-OWNER=""
-# true : reprendre aussi les fichiers existants ; false : seulement la racine.
-RECURSIVE=true
-
-die() { printf 'Erreur : %s\n' "$*" >&2; exit 1; }
-usage() {
-  cat <<'EOF'
-Usage : bash scripts/disk_setup.sh [--plan | --apply | --help]
-  --plan   Affiche les UUID et les effets prévus, sans sudo (par défaut).
-  --apply  Vérifie les quatre partitions puis demande la saisie CONFIGURER.
-
-Effets : sauvegarde de fstab, des labels et des propriétaires/permissions,
-montage automatique sous /mnt/<label>, affichage demandé via x-gvfs-show,
-attribution au compte choisi. Ni formatage, ni changement d'UUID.
-Les partitions doivent être démontées avant --apply.
-Voir docs/disques.md pour la procédure et le retour arrière.
-EOF
-}
-
+CYAN='' GREEN='' YELLOW='' RED='' RESET=''
+if [[ -t 1 && -t 2 && -z "${NO_COLOR:-}" && "${TERM:-dumb}" != dumb ]]; then
+    CYAN='\033[1;36m' GREEN='\033[1;32m' YELLOW='\033[1;33m' RED='\033[1;31m' RESET='\033[0m'
+fi
+step() { printf '\n%b── %s%b\n' "$CYAN" "$1" "$RESET"; }
+status() { printf '  %b[%s]%b %s\n' "$1" "$2" "$RESET" "$3"; }
+fatal() { status "$RED" 'Échec' "$1" >&2; exit 1; }
 validate_settings() {
-  local i j label
-  [[ ${#UUIDS[@]} == 4 && ${#LABELS[@]} == 4 ]] || die 'Prévoir exactement quatre UUID et quatre labels.'
-  [[ $RECURSIVE == true || $RECURSIVE == false ]] || die 'RECURSIVE doit être true ou false.'
-  for i in 0 1 2 3; do
-    [[ ${UUIDS[i]} =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] \
-      || die "Remplir l'UUID numéro $((i + 1)) avec un UUID ext4 valide."
-    UUIDS[i]=$(printf %s "${UUIDS[i]}" | tr '[:upper:]' '[:lower:]')
-    for ((j=0; j<i; j++)); do
-      [[ ${UUIDS[i]} != "${UUIDS[j]}" ]] || die 'UUID en double.'
+    local i j label
+    [[ ${#UUIDS[@]} == 4 && ${#LABELS[@]} == 4 ]] || fatal 'Quatre UUID et quatre labels sont requis.'
+    for i in 0 1 2 3; do
+        [[ ${UUIDS[i]} =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || fatal 'UUID ext4 non valide.'
+        label=${LABELS[i]}
+        [[ -n $label && $label != */* && $label != *\\* && $label != . && $label != .. && ! $label =~ [[:cntrl:]] && ${#label} -le 16 ]] || fatal 'Label non valide (1 à 16 octets, sans slash ni caractère de contrôle).'
+        for ((j=0; j<i; j++)); do
+            [[ ${UUIDS[i]} != "${UUIDS[j]}" && $label != "${LABELS[j]}" ]] || fatal 'UUID ou label en double.'
+        done
     done
-    label=${LABELS[i]}
-    [[ $label != */* && ! $label =~ [[:cntrl:]] && $label != *\\* && $label != . && $label != .. ]] \
-      || die 'Label non valide : éviter slash, antislash et caractères de contrôle.'
-    [[ $(LC_ALL=C printf %s "$label" | wc -c) -le 16 ]] || die 'Label trop long (16 octets maximum).'
-  done
+}
+usage() {
+    cat <<'HELP'
+Usage : bash scripts/disk_setup.sh [--plan | --dry-run | --apply | --help]
+
+Sans option, --plan ou --dry-run : inventaire et plan sans sudo ni écriture.
+--apply : vérifications interactives, proposition sudo puis saisie APPLIQUER.
+Voir docs/disques.md pour les prérequis, sauvegardes et le retour arrière.
+
+Le plan comprend le montage automatique des volumes au démarrage via /etc/fstab.
+Le script demande sudo avant les vérifications administrateur. Les volumes
+doivent être démontés et toute modification exige la saisie d’APPLIQUER.
+HELP
 }
 
-main() {
-  [[ $# -le 1 ]] || die 'Un seul argument est accepté.'
-  case ${1:---plan} in
-    --help|-h) usage; return ;;
-    --plan|--apply) ;;
-    *) usage >&2; exit 1 ;;
-  esac
-  usage
-  validate_settings
-  printf '\nUUID configurés :\n'; printf '  %s\n' "${UUIDS[@]}"
-  [[ ${1:---plan} == --apply ]] || return 0
-  [[ $(uname -s) == Linux && -f /etc/arch-release ]] || die 'Ce script cible Omarchy/Arch Linux.'
-  [[ $EUID -ne 0 ]] || die 'Lancer avec votre compte habituel, sans sudo devant bash.'
-  [[ -t 0 && -t 1 && -z ${SSH_CONNECTION:-} ]] || die 'Utiliser un terminal local interactif.'
-  local cmd owner uid gid i j device label target confirmation backup candidate
-  local -a devices labels targets oldlabels
-  for cmd in sudo blkid findmnt lsblk e2label getfacl setfacl getfattr setfattr python3 systemctl find mount umount chown; do
-    command -v "$cmd" >/dev/null || die "Commande requise absente : $cmd. Aucun paquet ne sera installé automatiquement."
-  done
-  owner=${OWNER:-$(id -un)}
-  uid=$(id -u "$owner") || die 'Compte inconnu.'
-  gid=$(id -g "$owner")
-  [[ $uid != 0 ]] || die 'Le propriétaire doit être un compte non root.'
-  [[ ! -L /etc/fstab && -f /etc/fstab ]] || die 'fstab absent ou symbolique : examiner manuellement.'
-  sudo -v
-  for i in 0 1 2 3; do
-    # Pas de cache : exiger une correspondance unique, même avec des clones.
-    device=$(sudo blkid -c /dev/null -t "UUID=${UUIDS[i]}" -o device) || die "UUID absent : ${UUIDS[i]}"
-    [[ $device != *$'\n'* && -b $device ]] || die 'UUID ambigu ou périphérique non bloc.'
-    [[ $(sudo blkid -p -s TYPE -o value "$device") == ext4 ]] || die "$device n'est pas ext4."
-    [[ $(lsblk -dn -o RO "$device") == 0 ]] || die "$device est en lecture seule."
-    # Refuser tout montage existant visible dans cet espace de montage.
-    if findmnt --source "$device" --noheadings >/dev/null; then
-      die "$device est monté. Le démonter manuellement avant de poursuivre (jamais une partition système)."
-    fi
-    oldlabels[i]=$(sudo e2label "$device")
-    label=${LABELS[i]:-${oldlabels[i]}}
-    label=${label:-Disque$((i + 1))}
-    LABELS[i]=$label
-    validate_settings
-    target=/mnt/$label
-    for ((j=0; j<i; j++)); do
-      [[ $target != "${targets[j]}" ]] || die 'Deux partitions ont le même label : choisir des labels distincts.'
-    done
-    [[ ! -L /mnt && ! -L $target ]] || die 'Le point de montage est un lien symbolique.'
-    if [[ -e $target ]]; then
-      [[ -d $target ]] || die "$target n'est pas un dossier."
-      [[ -z $(sudo find "$target" -mindepth 1 -maxdepth 1 -print -quit) ]] || die "$target n'est pas vide."
-    fi
-    if findmnt --mountpoint "$target" --noheadings >/dev/null; then die "$target est déjà monté."; fi
-    devices[i]=$device; labels[i]=$label; targets[i]=$target
-    printf '\n%s → %s → %s\n' "${UUIDS[i]}" "$device" "$target"
-    printf '  Label : %s → %s ; propriétaire : %s (%s:%s) ; récursif : %s\n' "${oldlabels[i]}" "$label" "$owner" "$uid" "$gid" "$RECURSIVE"
-  done
-  printf '\nLes entrées fstab de ces partitions seront remplacées ; les autres seront conservées.\n'
-  printf 'Une sauvegarde ACL/propriétaires précède toute prise de possession.\n'
-  read -r -p 'Pour autoriser ces changements, saisir CONFIGURER : ' confirmation
-  [[ $confirmation == CONFIGURER ]] || die 'Annulé.'
-  sudo mkdir -p /var/backups
-  backup=$(sudo mktemp -d /var/backups/omarchy-disks.XXXXXXXX)
-  sudo chmod 700 "$backup"
-  sudo cp -a /etc/fstab "$backup/fstab"
-  candidate=$backup/fstab.new
-  # Générer fstab sans interpréter les chaînes comme du code shell.
-  sudo python3 - "$backup/fstab" "$candidate" "${UUIDS[@]}" "${devices[@]}" "${labels[@]}" <<'PY'
-import os, re, sys
-source, dest = sys.argv[1:3]
-uuids, devices, labels = sys.argv[3:7], sys.argv[7:11], sys.argv[11:15]
-targets = ['/mnt/' + label for label in labels]
-def unescape(value):
-    return re.sub(r'\\([0-7]{3})', lambda m: chr(int(m[1], 8)), value)
-def escape(value):
-    return value.replace('\\', r'\134').replace(' ', r'\040').replace('\t', r'\011')
-result = []
-for line in open(source):
-    fields = line.split()
-    if not fields or fields[0].startswith('#'):
-        result.append(line); continue
-    if len(fields) < 4:
-        raise SystemExit('fstab malformé : corriger manuellement avant de poursuivre.')
-    spec, target = map(unescape, fields[:2])
-    selected = spec.lower() in ['uuid=' + u for u in uuids]
-    if spec.startswith('/'):
-        selected |= os.path.realpath(spec) in [os.path.realpath(d) for d in devices]
-    for tag, folder in [('LABEL=', 'by-label'), ('PARTLABEL=', 'by-partlabel'), ('PARTUUID=', 'by-partuuid')]:
-        if spec.startswith(tag):
-            selected |= os.path.realpath('/dev/disk/' + folder + '/' + spec[len(tag):]) in [os.path.realpath(d) for d in devices]
-    if selected:
-        if not target.startswith(('/mnt/', '/media/', '/run/media/')):
-            raise SystemExit('Entrée système ou personnalisée refusée : ' + line)
-        result.append('# Ancienne entrée sauvegardée : ' + line)
-    elif any(target == t or target.startswith(t + '/') or spec == t or spec.startswith(t + '/') for t in targets):
-        raise SystemExit('Point de montage déjà déclaré pour une autre source : ' + target)
-    else:
-        result.append(line)
-result.append('\n# Disques secondaires personnels — Omarchy-setup\n')
-for uuid, target in zip(uuids, targets):
-    result.append(f'UUID={uuid} {escape(target)} ext4 defaults,nofail,x-systemd.device-timeout=10s,x-gvfs-show 0 2\n')
-with open(dest, 'x') as output:
-    output.write(''.join(result))
-PY
-  sudo findmnt --verify --tab-file "$candidate"
-  printf '\nSauvegarde et journal de restauration : %s\n' "$backup"
-  # Les étapes restent journalisées même en cas d'interruption. Pas de faux
-  # retour arrière automatique après un chown partiellement effectué.
-  trap 'printf "Interruption/échec. Sauvegarde : %s ; voir docs/disques.md pour restaurer.\n" "$backup" >&2' ERR
-  for i in 0 1 2 3; do
-    printf '%s\n' "${oldlabels[i]}" | sudo tee "$backup/label-$i.txt" >/dev/null
-    printf '%s\n' "${UUIDS[i]}" | sudo tee "$backup/uuid-$i.txt" >/dev/null
-    printf '%s\n' "${targets[i]}" | sudo tee "$backup/target-$i.txt" >/dev/null
-    sudo mkdir -p -- "${targets[i]}"
-    sudo mount -t ext4 -o rw -- "${devices[i]}" "${targets[i]}"
-    [[ $(findmnt --mountpoint "${targets[i]}" -n -o UUID) == "${UUIDS[i]}" ]] || die 'UUID monté différent : arrêt.'
-    # -P : ne pas suivre les liens symboliques ; -p : chemins absolus.
-    if [[ $RECURSIVE == true ]]; then
-      sudo getfacl -R -P -p -n -- "${targets[i]}" | sudo tee "$backup/permissions-$i.acl" >/dev/null
-    else
-      sudo getfacl -p -n -- "${targets[i]}" | sudo tee "$backup/permissions-$i.acl" >/dev/null
-    fi
-    # chown peut effacer les capacités exécutables : les sauvegarder aussi.
-    if [[ $RECURSIVE == true ]]; then
-      sudo getfattr -R -h -d -m '^security.capability$' --absolute-names -- "${targets[i]}" | sudo tee "$backup/capabilities-$i.attrs" >/dev/null
-    else
-      sudo getfattr -h -d -m '^security.capability$' --absolute-names -- "${targets[i]}" | sudo tee "$backup/capabilities-$i.attrs" >/dev/null
-    fi
-    sudo touch "$backup/permissions-$i.complete"
-    sudo e2label "${devices[i]}" "${labels[i]}"
-    if [[ $RECURSIVE == true ]]; then
-      sudo find "${targets[i]}" -xdev ! -type l -exec chown --no-dereference "$uid:$gid" -- {} +
-    else
-      sudo chown --no-dereference "$uid:$gid" -- "${targets[i]}"
-    fi
-  done
-  # Ne pas écraser un changement parallèle de fstab.
-  sudo cmp -s /etc/fstab "$backup/fstab" || die 'fstab a changé pendant le travail : montage persistant non appliqué.'
-  sudo cp -- "$candidate" /etc/fstab
-  sudo systemctl daemon-reload
-  trap - ERR
-  printf '\nLes quatre disques sont montés et appartiennent à %s.\nSauvegarde : %s\n' "$owner" "$backup"
-  printf 'Rouvrir le gestionnaire de fichiers pour vérifier leur affichage.\n'
+MODE=preview
+case "$#:${1:-}" in
+    0:) ;;
+    1:--plan|1:--dry-run) MODE=preview ;;
+    1:--apply) MODE=interactive ;;
+    1:--help|1:-h) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+esac
+
+step 'CachyOS · Volumes secondaires'
+if [[ "$MODE" != preview ]]; then
+    [[ -t 0 && -t 1 && -z ${SSH_CONNECTION:-} && -z ${SSH_TTY:-} ]] || fatal 'Un terminal local interactif est requis pour appliquer.'
+    status "$CYAN" 'Privilèges' 'Les modifications nécessitent sudo et la confirmation APPLIQUER.'
+else
+    status "$CYAN" 'Simulation' 'Aucun sudo ni écriture ; lecture de l’inventaire uniquement.'
+fi
+
+[[ "$(uname -s)" == Linux ]] || fatal 'Ce script nécessite Linux.'
+[[ -r /etc/os-release ]] || fatal 'Distribution indéterminée.'
+source /etc/os-release
+[[ ${ID:-} == cachyos ]] || fatal 'Ce script cible CachyOS.'
+[[ ! -d /run/archiso ]] || fatal 'Démarrer sur le système installé, hors de l’ISO.'
+validate_settings
+OWNER_UID=$(id -u "$OWNER") || fatal "Compte introuvable : $OWNER."
+(( OWNER_UID != 0 )) || fatal 'Le compte cible doit avoir un UID différent de 0.'
+for tool in lsblk findmnt; do
+    command -v "$tool" >/dev/null || fatal "Outil manquant : $tool."
+done
+
+mounted_device_numbers() {
+    findmnt --kernel --noheadings --raw -o MAJ:MIN
 }
 
-if [[ ${BASH_SOURCE[0]} == "$0" ]]; then main "$@"; fi
+discover() {
+    local inventory mounted wanted uuid device fs kind node found actual label_plan i
+    inventory=$(lsblk -lpn -o UUID,PATH,FSTYPE,TYPE,MAJ:MIN) ||
+        fatal 'Inventaire des volumes indisponible.'
+    mounted=$(mounted_device_numbers) ||
+        fatal 'Table des montages indisponible.'
+    DEVICES=() NODES=()
+    ALL_OFFLINE=true
+    for i in "${!UUIDS[@]}"; do
+        wanted="${UUIDS[i]}" found=0
+        while read -r uuid device fs kind node; do
+            [[ "$uuid" == "$wanted" ]] || continue
+            (( found += 1 ))
+            [[ "$fs" == ext4 && "$kind" == part && "$device" == /dev/* &&
+               -b "$device" && "$node" =~ ^[0-9]+:[0-9]+$ ]] ||
+                fatal "La cible $wanted doit être une partition ext4."
+            DEVICES[i]="$device" NODES[i]="$node"
+        done <<< "$inventory"
+        (( found == 1 )) || fatal "Une seule partition est attendue pour ${LABELS[i]} ($wanted), relevé : $found."
+        actual=$(lsblk --nodeps --noheadings -o LABEL -- "${DEVICES[i]}") ||
+            fatal "Lecture du label impossible sur ${DEVICES[i]}."
+        if [[ "$actual" == "${LABELS[i]}" ]]; then
+            label_plan="label « $actual » déjà correct"
+        else
+            label_plan="label « ${actual:-sans label} » → « ${LABELS[i]} »"
+        fi
+        if [[ $'\n'"$mounted"$'\n' == *$'\n'"${NODES[i]}"$'\n'* ]]; then
+            ALL_OFFLINE=false
+            status "$YELLOW" 'Monté' "${DEVICES[i]} · $label_plan"
+        else
+            status "$CYAN" 'Démonté' "${DEVICES[i]} · $label_plan"
+        fi
+    done
+}
+
+step '1 · Examiner les quatre partitions'
+discover
+printf '  Propriétaire prévu pour la racine et son contenu : %s (UID %s).\n' "$OWNER" "$OWNER_UID"
+printf '  Montage automatique au démarrage prévu sous /mnt :\n'
+for label in "${LABELS[@]}"; do printf '    /mnt/%s\n' "$label"; done
+if [[ "$MODE" == preview ]]; then exit 0; fi
+while ! $ALL_OFFLINE; do
+    status "$YELLOW" 'Montage' 'Fermer les fichiers ouverts et démonter les volumes signalés depuis le gestionnaire de fichiers.'
+    printf '  Entrée pour actualiser, q pour quitter : '
+    if ! IFS= read -r answer || [[ "$answer" == [qQ] ]]; then
+        printf '  Opération annulée.\n'
+        exit 0
+    fi
+    discover
+done
+if (( EUID != 0 )); then
+    printf '  Continuer vers les vérifications avec sudo ? [o/N] '
+    if ! IFS= read -r answer || [[ "$answer" != [oO] && "$answer" != oui ]]; then
+        printf '  Opération annulée.\n'
+        exit 0
+    fi
+    command -v sudo >/dev/null || fatal 'Outil manquant : sudo.'
+    script_path=$(realpath -e -- "${BASH_SOURCE[0]}") || fatal 'Chemin du script introuvable.'
+    exec sudo -- /usr/bin/bash -- "$script_path" --apply
+fi
+
+for tool in blkid blockdev chown cmp cp e2label find findfs flock mkdir mktemp mount mountpoint mv realpath rm rmdir sha256sum umount systemctl touch getfacl setfacl getfattr setfattr; do
+    command -v "$tool" >/dev/null || fatal "Outil manquant : $tool."
+done
+
+require_offline_device() {
+    local device="$1" expected_uuid="$2" node="$3" mounted actual_uuid actual_type actual_node read_only
+    actual_uuid=$(blkid -p -s UUID -o value -- "$device") ||
+        fatal "Impossible de lire l’UUID sur $device."
+    [[ "$actual_uuid" == "$expected_uuid" ]] ||
+        fatal "UUID inattendu sur $device : $actual_uuid (attendu : $expected_uuid)."
+    actual_type=$(blkid -p -s TYPE -o value -- "$device") ||
+        fatal "Impossible de lire le type de système de fichiers sur $device."
+    [[ "$actual_type" == ext4 ]] || fatal "Type inattendu sur $device : $actual_type (attendu : ext4)."
+    # La présentation tabulaire de lsblk ajoute des espaces autour de MAJ:MIN.
+    actual_node=$(lsblk --nodeps --noheadings --raw -o MAJ:MIN -- "$device") ||
+        fatal "Impossible de lire le numéro de périphérique de $device."
+    [[ "$actual_node" == "$node" ]] ||
+        fatal "Numéro de périphérique inattendu sur $device : $actual_node (attendu : $node)."
+    mounted=$(mounted_device_numbers) ||
+        fatal 'Table des montages indisponible.'
+    [[ $'\n'"$mounted"$'\n' != *$'\n'"$node"$'\n'* ]] || fatal "$device est monté."
+    # Certaines versions de blockdev traitent le séparateur -- comme une commande.
+    read_only=$(blockdev --getro "$device") || fatal "Impossible de vérifier l’accès en écriture sur $device."
+    [[ "$read_only" == 0 ]] || fatal "$device est en lecture seule."
+}
+
+verify_targets() {
+    local i
+    for i in "${!UUIDS[@]}"; do
+        require_offline_device "${DEVICES[i]}" "${UUIDS[i]}" "${NODES[i]}"
+    done
+}
+
+check_mount_directory() {
+    local target="$1" entries
+    [[ -d /mnt && ! -L /mnt && ! -L "$target" ]] || fatal "Point de montage redirigé ou parent absent : $target."
+    if [[ -e "$target" ]]; then
+        [[ -d "$target" ]] || fatal "Le point de montage n’est pas un dossier : $target."
+        if mountpoint -q -- "$target"; then fatal "Point de montage déjà utilisé : $target."; fi
+        entries=$(find "$target" -mindepth 1 -maxdepth 1 -printf x -quit) ||
+            fatal "Impossible de lire $target."
+        [[ -z "$entries" ]] || fatal "Point de montage non vide : $target."
+    fi
+}
+
+plan_boot_mounts() {
+    local source target fs options dump pass rest resolved canonical tag i path expected
+    local -a present=()
+    [[ -f "$FSTAB" && ! -L "$FSTAB" ]] || fatal "$FSTAB doit être un fichier ordinaire."
+    FSTAB_BEFORE=$(sha256sum -- "$FSTAB") || fatal "Impossible de lire $FSTAB."
+    FSTAB_LINES=()
+    while read -r source target fs options dump pass rest || [[ -n "$source" ]]; do
+        [[ -n "$source" && "$source" != \#* ]] || continue
+        source="${source//\\040/ }"
+        target="${target//\\040/ }"
+        target="${target//\\011/$'\t'}"
+        resolved=''
+        tag=''
+        case "$source" in
+            UUID=*|LABEL=*|PARTUUID=*|PARTLABEL=*)
+                tag="${source#*=}"
+                if [[ "$tag" == \"*\" || "$tag" == \'*\' ]]; then tag="${tag:1:${#tag}-2}"; fi
+                source="${source%%=*}=$tag"
+                resolved=$(findfs "$source" 2>/dev/null) || resolved=''
+                ;;
+            /dev/*) resolved="$source" ;;
+        esac
+        if [[ -n "$resolved" ]]; then resolved=$(realpath -m -- "$resolved") || fatal "Chemin de périphérique invalide : $resolved."; fi
+        canonical="$target"
+        if [[ "$target" == /* ]]; then canonical=$(realpath -m -- "$target") || fatal "Chemin fstab invalide : $target."; fi
+        for i in "${!UUIDS[@]}"; do
+            path="/mnt/${LABELS[i]}"
+            expected="UUID=${UUIDS[i]}"
+            if [[ "$source" == "$expected" && "$target" == "$path" && "$fs" == ext4 &&
+                  "$options" == "$BOOT_MOUNT_OPTIONS" && "$dump" == 0 && "$pass" == 2 &&
+                  -z "${present[i]:-}" ]]; then
+                present[i]=true
+            elif [[ "$source" == "$expected" || "$source" == "LABEL=${LABELS[i]}" ||
+                    "$resolved" == "${DEVICES[i]}" || "$canonical" == "$path" ||
+                    "$canonical" == "$path/"* || "$path" == "$canonical/"* ]]; then
+                fatal "Entrée existante en conflit dans $FSTAB : $source → $target."
+            fi
+        done
+    done < "$FSTAB"
+    for i in "${!UUIDS[@]}"; do
+        path="/mnt/${LABELS[i]}"
+        check_mount_directory "$path"
+        if [[ "${present[i]:-}" != true ]]; then
+            FSTAB_LINES+=("UUID=${UUIDS[i]} ${path// /\\040} ext4 $BOOT_MOUNT_OPTIONS 0 2")
+        fi
+    done
+    [[ "$(sha256sum -- "$FSTAB")" == "$FSTAB_BEFORE" ]] || fatal "$FSTAB a changé pendant la lecture."
+}
+
+step '2 · Confirmer les changements'
+verify_targets
+plan_boot_mounts
+status "$GREEN" 'Prêt' 'Les quatre partitions ext4 sont identifiées par UUID, démontées et accessibles en écriture.'
+printf '  Entrées de montage à ajouter dans %s : %s. Un disque absent ne bloque pas le démarrage.\n' "$FSTAB" "${#FSTAB_LINES[@]}"
+status "$YELLOW" 'Attention' 'Le changement de propriétaire touche tous les fichiers, y compris les fichiers cachés. Il peut modifier les droits d’accès et effacer certains bits spéciaux ou capacités.'
+printf '  Les groupes sont conservés. Un relevé des propriétaires, ACL et capacités précède chaque changement.\n'
+printf '  Taper APPLIQUER pour continuer : '
+IFS= read -r answer || fatal 'Confirmation interrompue.'
+if [[ "$answer" != APPLIQUER ]]; then printf '  Opération annulée.\n'; exit 0; fi
+
+umask 077
+exec 9>/run/cachyos-disk-setup.lock || fatal 'Impossible d’ouvrir le verrou.'
+flock -n 9 || fatal 'Une autre exécution est déjà en cours.'
+# Revalider toutes les cibles avant d’ouvrir la première en écriture.
+verify_targets
+[[ "$(sha256sum -- "$FSTAB")" == "$FSTAB_BEFORE" ]] || fatal "$FSTAB a changé depuis le plan."
+
+SNAPSHOT=$(mktemp -d /var/tmp/cachy-setup-disques.XXXXXXXX) || fatal 'Création du relevé impossible.'
+MOUNT_DIR="$SNAPSHOT/volume"
+FSTAB_STAGE=''
+FSTAB_INSTALLED=false
+CREATED_MOUNT_PATHS=()
+cleanup() {
+    local result=$? path
+    if mountpoint -q -- "$MOUNT_DIR"; then
+        if ! umount -- "$MOUNT_DIR"; then
+            status "$RED" 'Échec' "Montage encore actif : $MOUNT_DIR." >&2
+            result=1
+        fi
+    fi
+    if [[ -d "$MOUNT_DIR" ]] && ! mountpoint -q -- "$MOUNT_DIR"; then rmdir -- "$MOUNT_DIR" || result=1; fi
+    if [[ -n "$FSTAB_STAGE" ]]; then rm -f -- "$FSTAB_STAGE" || result=1; fi
+    if (( result != 0 )) && ! $FSTAB_INSTALLED; then
+        for path in ${CREATED_MOUNT_PATHS[@]+"${CREATED_MOUNT_PATHS[@]}"}; do rmdir -- "$path" || result=1; done
+    fi
+    printf '  Relevé et journal : %s\n' "$SNAPSHOT"
+    exit "$result"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+mkdir -- "$MOUNT_DIR"
+printf 'État\tUUID\tPériphérique\tLabel prévu\n' > "$SNAPSHOT/journal.tsv"
+
+for label in "${LABELS[@]}"; do
+    path="/mnt/$label"
+    check_mount_directory "$path"
+    if [[ ! -d "$path" ]]; then
+        mkdir -m 0755 -- "$path" || fatal "Impossible de créer $path."
+        CREATED_MOUNT_PATHS+=("$path")
+    fi
+done
+if (( ${#FSTAB_LINES[@]} > 0 )); then
+    cp --preserve=all -- "$FSTAB" "$SNAPSHOT/fstab.avant" || fatal "Sauvegarde de $FSTAB impossible."
+    [[ "$(sha256sum -- "$FSTAB")" == "$FSTAB_BEFORE" ]] &&
+        cmp -s -- "$FSTAB" "$SNAPSHOT/fstab.avant" || fatal "$FSTAB a changé depuis le plan."
+    FSTAB_STAGE=$(mktemp /etc/.cachyos-fstab.XXXXXXXX) || fatal 'Préparation du fichier fstab impossible.'
+    cp --preserve=all -- "$SNAPSHOT/fstab.avant" "$FSTAB_STAGE" || fatal 'Copie du fichier fstab impossible.'
+    printf '\n# CachyOS : volumes secondaires\n%s\n' "${FSTAB_LINES[@]}" >> "$FSTAB_STAGE" ||
+        fatal 'Écriture du fichier fstab préparé impossible.'
+    findmnt --verify --tab-file "$FSTAB_STAGE" > "$SNAPSHOT/fstab.verification" 2>&1 ||
+        fatal "Le fichier fstab préparé a échoué à la vérification. Voir $SNAPSHOT/fstab.verification."
+fi
+
+for i in "${!UUIDS[@]}"; do
+    uuid="${UUIDS[i]}" device="${DEVICES[i]}" label="${LABELS[i]}" node="${NODES[i]}"
+    step "3 · Traiter $label ($device)"
+    require_offline_device "$device" "$uuid" "$node"
+    old_label=$(e2label "$device") || fatal "Lecture du label de $device impossible."
+    printf '%s\n' "$old_label" > "$SNAPSHOT/$uuid.label"
+    mount -t ext4 -o nosuid,nodev,noexec -- "$device" "$MOUNT_DIR" ||
+        fatal "Montage temporaire impossible : $device."
+    mount_identity=$(findmnt --kernel --noheadings --raw --mountpoint "$MOUNT_DIR" -o MAJ:MIN,FSTYPE,FSROOT) ||
+        fatal 'Identité du montage temporaire indisponible.'
+    [[ "$mount_identity" == "$node ext4 /" ]] || fatal 'Le montage temporaire ne correspond pas au volume attendu.'
+
+    # Relevé des entrées qui changent : UID, GID, mode, inode et chemin relatif,
+    # avec séparateurs NUL pour conserver aussi les caractères spéciaux.
+    status "$CYAN" 'Relevé' 'Lecture des propriétaires sur ce volume.'
+    find -P "$MOUNT_DIR" -xdev ! -uid "$OWNER_UID" -printf '%U\0%G\0%m\0%i\0%P\0' > "$SNAPSHOT/$uuid.proprietaires" ||
+        fatal "Relevé des propriétaires incomplet pour $label."
+    # Sauvegarder les ACL, propriétaires, modes et capacités : chown peut
+    # retirer des bits spéciaux et security.capability. Ne suivre aucun lien.
+    getfacl -R -P -p -n -- "$MOUNT_DIR" > "$SNAPSHOT/$uuid.acl" ||
+        fatal "Sauvegarde ACL incomplète pour $label."
+    getfattr -R -h -d -m '^security.capability$' --absolute-names -- "$MOUNT_DIR" > "$SNAPSHOT/$uuid.capabilities" ||
+        fatal "Sauvegarde des capacités incomplète pour $label."
+    printf '%s\n' "$MOUNT_DIR" > "$SNAPSHOT/$uuid.mount-path"
+    touch "$SNAPSHOT/$uuid.metadata-complete"
+    if [[ -s "$SNAPSHOT/$uuid.proprietaires" ]]; then
+        printf 'Propriété en cours\t%s\t%s\t%s\n' "$uuid" "$device" "$label" >> "$SNAPSHOT/journal.tsv"
+        status "$CYAN" 'Propriété' "Attribution des entrées concernées à $OWNER."
+        find -P "$MOUNT_DIR" -xdev ! -uid "$OWNER_UID" -execdir chown -h -- "+$OWNER_UID" '{}' + ||
+            fatal "Changement de propriétaire incomplet pour $label. Voir le relevé."
+    else
+        status "$GREEN" 'Propriété' "Toutes les entrées appartiennent déjà à $OWNER."
+    fi
+    remaining=$(find -P "$MOUNT_DIR" -xdev ! -uid "$OWNER_UID" -print -quit) ||
+        fatal "Vérification de la propriété impossible pour $label."
+    [[ -z "$remaining" ]] || fatal "Une entrée appartient encore à un autre compte : $remaining."
+    umount -- "$MOUNT_DIR" || fatal "Démontage temporaire impossible : $device."
+
+    require_offline_device "$device" "$uuid" "$node"
+    if [[ "$old_label" != "$label" ]]; then
+        e2label "$device" "$label" || fatal "Impossible d’appliquer le label « $label »."
+    fi
+    [[ "$(e2label "$device")" == "$label" ]] || fatal "Le label final de $device est inattendu."
+    printf 'Vérifié\t%s\t%s\t%s\n' "$uuid" "$device" "$label" >> "$SNAPSHOT/journal.tsv"
+    status "$GREEN" 'Vérifié' "Label « $label » et propriétaire $OWNER."
+done
+
+step '4 · Activer le montage au démarrage et afficher le bilan'
+if [[ -n "$FSTAB_STAGE" ]]; then
+    [[ -f "$FSTAB" && ! -L "$FSTAB" && "$(sha256sum -- "$FSTAB")" == "$FSTAB_BEFORE" ]] ||
+        fatal "$FSTAB a changé. Le fichier existant est conservé."
+    for label in "${LABELS[@]}"; do check_mount_directory "/mnt/$label"; done
+    FSTAB_INSTALLED=true
+    if ! mv -T -- "$FSTAB_STAGE" "$FSTAB"; then
+        FSTAB_INSTALLED=false
+        fatal "Impossible de mettre à jour $FSTAB."
+    fi
+    FSTAB_STAGE=''
+fi
+# Recharger les unités générées par fstab, sans monter les quatre volumes.
+if $FSTAB_INSTALLED; then systemctl daemon-reload || fatal 'Rechargement systemd échoué ; consulter le relevé.'; fi
+status "$GREEN" 'Terminé' "${#UUIDS[@]} volumes vérifiés. Le montage automatique prendra effet au prochain démarrage."

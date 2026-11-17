@@ -1,0 +1,43 @@
+name: Vérification du dépôt
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verification-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  controles:
+    name: Syntaxe, profils et tests (Python ${{ matrix.python }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.11', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Vérifier la syntaxe Bash
+        run: |
+          bash -n scripts/umbriel_setup.sh
+          bash -n scripts/ssh_setup.sh
+          bash -n scripts/disk_setup.sh
+      - name: Vérifier les sources TOML et les inclusions
+        run: python3 -B scripts/noctalia_dotfiles.py --check --keyboard ca
+      - name: Exécuter les tests isolés
+        run: python3 -B -m unittest discover -s tests
+      - name: Vérifier les liens de la documentation
+        run: python3 -B scripts/check_docs.py
+      - name: Vérifier les espaces et les marqueurs de conflit
+        run: git show --format= --check HEAD

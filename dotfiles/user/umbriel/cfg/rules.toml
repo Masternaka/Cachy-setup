@@ -1,10 +1,19 @@
 [[window_rule]]
 match.app_id = "^dev.noctalia.Noctalia$"
 default_floating = true
+default_floating_size_px = { width = 1020, height = 900 }
 
 [[window_rule]]
 match.app_id = "^dev.noctalia.UmbrielSharePicker$"
 default_floating = true
+default_floating_size_px = { width = 800, height = 600 }
+
+# La vidéo incrustée reste une petite fenêtre indépendante du pavage.
+# Titres utilisés dans l'exemple officiel ; inspecter les titres réels si besoin.
+[[window_rule]]
+match.title = "^(Picture-in-Picture|Picture in picture)$"
+default_floating = true
+default_maximize = false
 
 [[layer_rule]]
 match.namespace = '^noctalia-(bar-[^"]+|notification|dock|panel|attached-panel|osd)$'

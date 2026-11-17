@@ -4,7 +4,25 @@ layout = "@KEYBOARD@"
 variant = "@VARIANT@"
 repeat_rate = 30
 repeat_delay = 400
+# Activer le pavé numérique au démarrage ; les choix suivants restent manuels.
+numlock_toggle = true
 
 [input.touchpad]
 tap = true
 natural_scroll = true
+# Éviter un mouvement involontaire pendant la saisie, si le matériel le permet.
+disable_while_typing = true
+
+# Le clic ou le clavier choisit le focus : traverser un écran avec la souris
+# ne doit pas sélectionner une autre fenêtre pendant la saisie.
+[input.focus]
+follows_mouse = "off"
+
+[input.cursor]
+size = 24
+# Suivre les changements de fenêtre au clavier, notamment entre les deux écrans.
+follows_focus = true
+
+# Gestes intégrés : Super+glisser gauche déplace une fenêtre ;
+# Super+glisser droit depuis un bord ou un coin la redimensionne.
+# Accélération souris et modèle clavier restent aux valeurs du matériel.

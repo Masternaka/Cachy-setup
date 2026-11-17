@@ -2,6 +2,9 @@
 import os
 import importlib.util
 import json
+import re
+import shlex
+import sys
 from pathlib import Path
 import subprocess
 import tempfile
@@ -17,6 +20,7 @@ except ImportError:
         tomllib = None
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts/umbriel_setup.sh"
+sys.path.insert(0, str(SCRIPT.parent))
 SPEC = importlib.util.spec_from_file_location("noctalia_dotfiles", SCRIPT.with_name("noctalia_dotfiles.py"))
 DOTFILES = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(DOTFILES)
@@ -38,6 +42,7 @@ class ConsultationTests(unittest.TestCase):
             self.stub(command, 'printf "%s\\n" "$0" >> "$FORBIDDEN_CALLS"\nexit 97\n')
         self.env = dict(os.environ, HOME=str(self.home),
                         XDG_CONFIG_HOME=str(self.home / ".config"),
+                        XDG_STATE_HOME=str(self.home / ".local/state"),
                         PATH=str(self.bin) + os.pathsep + os.environ["PATH"],
                         FORBIDDEN_CALLS=str(self.root / "forbidden"))
 
@@ -78,6 +83,77 @@ class ConsultationTests(unittest.TestCase):
                           ("--aur-helper", "paru")):
             with self.subTest(arguments=arguments):
                 self.assertNotEqual(self.run_script(*arguments).returncode, 0)
+
+    def test_ambiguous_or_overlapping_xdg_paths_are_rejected_without_writes(self):
+        original = self.env.copy()
+        for config, state in (
+            (str(self.home / "../outside"), str(self.home / ".local/state")),
+            (str(self.home) + "/.config/..", str(self.home / ".local/state")),
+            (str(self.home) + "/./.config", str(self.home / ".local/state")),
+            (str(self.home) + "//.config", str(self.home / ".local/state")),
+            (str(self.home / ".config"), str(self.home / ".local/../outside")),
+            (str(self.home / ".config"), str(self.home / ".config")),
+            (str(self.home / ".config"), str(self.home / ".config/state")),
+            (str(self.home / ".local/state/config"), str(self.home / ".local/state")),
+            (str(self.home.parent / "home-other/config"), str(self.home / ".local/state")),
+        ):
+            with self.subTest(config=config, state=state):
+                self.env = dict(original, XDG_CONFIG_HOME=config, XDG_STATE_HOME=state)
+                result = self.run_script("--plan")
+                self.assertNotEqual(result.returncode, 0, result.stdout)
+                self.assertIn("Erreur", result.stderr)
+        self.env = original
+
+    def test_distinct_xdg_siblings_with_shared_prefix_are_accepted(self):
+        self.env.update(XDG_CONFIG_HOME=str(self.home / "profile"),
+                        XDG_STATE_HOME=str(self.home / "profile-state"))
+        self.assertEqual(self.run_script("--plan").returncode, 0)
+
+    def test_application_references_match_the_selected_packages(self):
+        # Contrat entre les paquets choisis, leurs fichiers et les profils :
+        # Zed est distribué sous le nom zeditor par Arch/CachyOS.
+        applications = {
+            "kitty": ("kitty", None), "firefox": ("firefox", "firefox.desktop"),
+            "thunar": ("thunar", "thunar.desktop"), "micro": ("micro", None),
+            "zed": ("zeditor", "dev.zed.Zed.desktop"),
+            "firefox-i18n-fr": (None, None),
+            "papers": ("papers", "org.gnome.Papers.desktop"),
+            "loupe": ("loupe", "org.gnome.Loupe.desktop"),
+            "mpv": ("mpv", "mpv.desktop"),
+        }
+        source = SCRIPT.read_text()
+        selected = shlex.split(re.search(r"^PACKAGES_APPLICATIONS=\((.*)\)$", source, re.M)[1])
+        binaries = {applications[pkg][0] for pkg in selected} - {None}
+        # Le paquet Kitty fournit aussi le lanceur du terminal déroulant.
+        if "kitty" in selected:
+            binaries.add("kitten")
+        desktops = {applications[pkg][1] for pkg in selected} - {None}
+        files = DOTFILES.render_files()
+        for command in re.findall(r'action = "spawn ([^\"]+)"', files["user/umbriel/cfg/keybinds.toml"]):
+            executable = shlex.split(command)[0]
+            self.assertIn(executable, binaries | {"noctalia"})
+        for line in files["user/mimeapps.list"].splitlines():
+            if "=" in line:
+                self.assertIn(line.split("=", 1)[1].rstrip(";"), desktops)
+        for association in ("application/pdf=org.gnome.Papers.desktop;",
+                            "image/png=org.gnome.Loupe.desktop;",
+                            "video/mp4=mpv.desktop;", "audio/mpeg=mpv.desktop;"):
+            self.assertIn(association, files["user/mimeapps.list"].splitlines())
+        if tomllib:
+            # Les favoris du lanceur doivent aussi correspondre aux applications
+            # réellement sélectionnées, et non à des identifiants d'un autre bureau.
+            shell = tomllib.loads(files["user/noctalia/cfg/shell.toml"])
+            self.assertTrue(set(shell["shell"]["launcher"]["pinned"]).issubset(desktops))
+        checked_binaries = shlex.split(re.search(r"^for tool in (.*); do$", source, re.M)[1])
+        checked_desktops = shlex.split(re.search(r"^for desktop in (.*); do$", source, re.M)[1])
+        self.assertTrue(binaries.issubset(checked_binaries))
+        self.assertEqual(set(checked_desktops), desktops)
+        self.assertNotIn("mousepad", checked_binaries)
+
+    def test_thunar_archive_support_has_a_manager_and_zip_tools(self):
+        output = self.run_resolution("printf 'Repository : extra\\nVersion : 1.0-1\\n'\n")
+        for package in ("thunar-archive-plugin", "xarchiver", "zip", "unzip"):
+            self.assertIn("TARGET extra/" + package + "\n", output)
 
     def run_resolution(self, pacman_body):
         self.stub("pacman", pacman_body)
@@ -132,32 +208,52 @@ printf 'Repository : extra\\nVersion : 1.0-1\\n'
         self.assertNotIn("TARGET ", output)
 
     def test_configuration_starts_current_shell(self):
-        result = self.run_script("--print-config", "--keyboard", "ca", "--variant", "multix")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('autostart = ["noctalia"]', result.stdout)
-        self.assertIn('layout = "ca"', result.stdout)
-        self.assertIn('variant = "multix"', result.stdout)
-        self.assertIn('"Mod+Return" = { action = "spawn kitty", repeat = false }', result.stdout)
+        for options, layout, variant in (((), "ca", ""),
+                                        (("--keyboard", "ca", "--variant", "multix"), "ca", "multix"),
+                                        (("--keyboard", "us"), "us", "")):
+            with self.subTest(layout=layout, variant=variant):
+                result = self.run_script("--print-config", *options)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn('autostart = ["noctalia"]', result.stdout)
+                self.assertEqual(result.stdout.count('layout = "' + layout + '"'), 2)
+                self.assertEqual(result.stdout.count('variant = "' + variant + '"'), 2)
+                self.assertIn('"Mod+Return" = { action = "spawn kitty", repeat = false }', result.stdout)
+        result = self.run_script("--plan")
+        self.assertIn("Clavier Umbriel et Greeter : ca / défaut", result.stdout)
 
     @unittest.skipUnless(tomllib, "Analyse TOML : aucun parseur déjà disponible")
     def test_configuration_is_valid_toml(self):
-        for layout, variant in (("us", ""), ("ca", "multix")):
+        for layout, variant in (("ca", ""), ("us", ""), ("ca", "multix")):
             files = DOTFILES.render_files(layout, variant)
             DOTFILES.check_files(files, toml_parser=tomllib)
             session = tomllib.loads(files["user/umbriel/cfg/input.toml"])
             greeter = tomllib.loads(files["system/greeter.toml"])
             self.assertEqual(session["input"]["keyboard"]["layout"], layout)
             self.assertEqual(greeter["keyboard"], {"layout": layout, "variant": variant})
-            # La version CachyOS Greeter 1.6.0 ne reconnaît pas [clock].
-            self.assertNotIn("clock", greeter)
+            # Paramètres présents dans l'exemple officiel Greeter v1.7.0.
+            self.assertEqual(greeter["clock"], {
+                "enabled": True, "position": "above-panel",
+                "time_format": "{:%H:%M}", "date_format": "%A, %x",
+            })
             self.assertEqual(greeter["session"]["default"], "Umbriel")
             self.assertFalse(greeter["auth"]["allow_empty_password"])
+        defaults = DOTFILES.render_files()
+        session = tomllib.loads(defaults["user/umbriel/cfg/input.toml"])
+        greeter = tomllib.loads(defaults["system/greeter.toml"])
+        self.assertEqual(session["input"]["keyboard"]["layout"], "ca")
+        self.assertEqual(session["input"]["keyboard"]["variant"], "")
+        self.assertEqual(greeter["keyboard"], {"layout": "ca", "variant": ""})
 
-    def run_network_check(self, active, enabled=""):
+    def run_network_check(self, active, enabled="", instance_status=0):
         self.stub("systemctl", '''
 case "$1" in
   is-active) case " $ACTIVE_UNITS " in *" $3 "*) exit 0;; *) exit 3;; esac ;;
   list-unit-files) printf '%s' "$ENABLED_UNITS" ;;
+  list-units)
+    [ "$INSTANCE_STATUS" = 0 ] || exit "$INSTANCE_STATUS"
+    for unit in $ACTIVE_UNITS; do
+      case "$unit" in dhcpcd@*.service) printf '%s loaded active running DHCP\\n' "$unit";; esac
+    done ;;
   *) exit 97 ;;
 esac
 ''')
@@ -167,7 +263,8 @@ esac
 check_network_backend
 if ((${#BLOCKERS[@]})); then printf '%s\\n' "${BLOCKERS[@]}"; fi
 '''
-        env = dict(self.env, ACTIVE_UNITS=active, ENABLED_UNITS=enabled)
+        env = dict(self.env, ACTIVE_UNITS=active, ENABLED_UNITS=enabled,
+                   INSTANCE_STATUS=str(instance_status))
         result = subprocess.run(["bash", "-s"], input=program, env=env,
                                 capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -180,6 +277,13 @@ if ((${#BLOCKERS[@]})); then printf '%s\\n' "${BLOCKERS[@]}"; fi
         self.assertIn("Gestionnaire réseau actif", self.run_network_check("systemd-networkd.service"))
         self.assertIn("dhcpcd@enp1s0.service", self.run_network_check("", "dhcpcd@enp1s0.service enabled disabled\n"))
         self.assertIn("iwd actif sans NetworkManager", self.run_network_check("iwd.service"))
+
+    def test_active_dhcpcd_instance_blocks_even_without_enablement(self):
+        self.assertIn("Gestionnaire réseau actif : dhcpcd@enp1s0.service",
+                      self.run_network_check("dhcpcd@enp1s0.service"))
+
+    def test_failed_instance_diagnostic_blocks_migration(self):
+        self.assertIn("diagnostic réseau incomplet", self.run_network_check("", instance_status=1))
 
 
 class NativeGateTests(unittest.TestCase):
@@ -253,8 +357,7 @@ class ModuleTests(unittest.TestCase):
             entry = files[root + "config.toml"].split("[include.optional]")[0]
             for include in re.findall(r'"(cfg/[^\"]+)"', entry):
                 self.assertIn(root + include, files)
-        for line in files["user/kitty/kitty.conf"].splitlines():
-            self.assertIn("user/kitty/" + line.removeprefix("include "), files)
+        self.assertNotIn("user/kitty/kitty.conf", files, "Kitty doit provenir du dépôt externe, sans récupération implicite")
 
     def test_staging_writes_only_a_new_directory(self):
         with tempfile.TemporaryDirectory(prefix="cachy-modules-") as temporary:
@@ -291,7 +394,9 @@ class ModuleTests(unittest.TestCase):
             (config / "unrelated/personal").write_text("à préserver")
             (state / "settings.toml").write_text("réglage GUI prioritaire")
             stage = root / "prepared"
-            DOTFILES.write_files(DOTFILES.render_files(), stage)
+            kitty_fixture = {"kitty.conf": "include themes/test.conf\n",
+                             "themes/test.conf": "foreground #ffffff\n"}
+            DOTFILES.write_files(DOTFILES.render_files(kitty_files=kitty_fixture), stage)
             backup = root / "backup"
             backup.mkdir()
             function = SCRIPT.read_text().split("install_user_dotfiles() {", 1)[1].split("\n}\n", 1)[0]

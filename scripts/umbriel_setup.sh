@@ -4,7 +4,8 @@ set -Eeuo pipefail
 
 MODE=plan
 REPLACE=0
-KEYBOARD=us
+# Français (Canada) : disposition ca, sans variante supplémentaire.
+KEYBOARD=ca
 VARIANT=
 BACKUP=
 STAGE=
@@ -15,15 +16,15 @@ USER_UNITS=(pipewire.socket pipewire-pulse.socket wireplumber.service gnome-keyr
 # supplémentaires restent résolues par pacman pendant la transaction.
 PACKAGES_DESKTOP=(umbriel noctalia)
 PACKAGES_LOGIN=(greetd noctalia-greeter)
-PACKAGES_APPLICATIONS=(kitty firefox thunar mousepad)
-PACKAGES_AUDIO=(pipewire pipewire-audio pipewire-pulse wireplumber)
+PACKAGES_APPLICATIONS=(kitty firefox firefox-i18n-fr thunar micro zed papers loupe mpv)
+PACKAGES_AUDIO=(pipewire pipewire-audio pipewire-pulse pipewire-alsa wireplumber pavucontrol)
 PACKAGES_NETWORK=(networkmanager)
 PACKAGES_SECRETS=(gnome-keyring seahorse)
 PACKAGES_INTEGRATION=(dbus polkit xorg-xwayland xdg-utils wl-clipboard)
-PACKAGES_FILES=(gvfs tumbler)
+PACKAGES_FILES=(gvfs gvfs-smb gvfs-mtp tumbler ffmpegthumbnailer thunar-archive-plugin thunar-volman xarchiver zip unzip)
 PACKAGES_PORTALS=(xdg-desktop-portal xdg-desktop-portal-umbriel xdg-desktop-portal-gtk)
 PACKAGES_HARDWARE=(brightnessctl upower)
-PACKAGES_APPEARANCE=(ttf-dejavu noto-fonts-emoji adwaita-icon-theme)
+PACKAGES_APPEARANCE=(ttf-dejavu ttf-liberation ttf-jetbrains-mono-nerd noto-fonts-emoji adwaita-icon-theme)
 PACKAGES_SETUP=(python)
 
 # Une seule transaction conserve la mise à jour complète et la résolution
@@ -53,9 +54,10 @@ Cible : CachyOS installé avec l'option No Desktop, puis démarré sur le disque
   --apply                Installer/configurer après confirmation interactive.
   --replace-config       Autoriser le remplacement des configurations existantes
                          des profils gérés et des réglages GUI Noctalia sauvegardés.
-  --keyboard CODE        Disposition XKB de la session et de Greeter (défaut : us).
-  --variant CODE         Variante XKB (défaut : vide ; ex. multix).
-  --print-config         Afficher chaque fichier proposé, puis sortir (Python 3).
+  --keyboard CODE        Disposition XKB de la session et de Greeter (défaut : ca).
+  --variant CODE         Variante XKB (défaut : vide, Français Canada ; multix pour CSA).
+  --print-config         Afficher les fichiers locaux, puis sortir (Python 3).
+                         Kitty est récupéré depuis CachyOS/main seulement en --apply.
   -h, --help             Afficher cette aide.
 Ne pas lancer avec sudo. Aucun redémarrage ni lancement du greeter automatique.
 Guide, limites et restauration : docs/noctalia.md
@@ -85,8 +87,20 @@ fi
 
 CONFIG_HOME=${XDG_CONFIG_HOME:-$HOME/.config}
 STATE_HOME=${XDG_STATE_HOME:-$HOME/.local/state}
-[[ $CONFIG_HOME == /* && $STATE_HOME == /* && $HOME == /* && $HOME != / ]] || die 'Chemins personnels absolus requis'
-[[ $CONFIG_HOME == "$HOME/"* && $STATE_HOME == "$HOME/"* ]] || die 'Les dossiers XDG doivent se trouver sous le dossier personnel pour cette procédure.'
+validate_personal_paths() {
+  local path
+  for path in "$HOME" "$CONFIG_HOME" "$STATE_HOME"; do
+    [[ $path == /* && $path != / && $path != */ ]] || die 'Chemins personnels absolus requis, sans barre finale'
+    # Refuser les formes ambiguës avant le contrôle de confinement. Les liens
+    # symboliques sont ensuite contrôlés par realpath dans preflight.
+    case "$path/" in
+      *'/../'*|*'/./'*|*'//'*) die 'Chemins personnels non normalisés : composants . ou .. et doubles barres interdits' ;;
+    esac
+  done
+  [[ $CONFIG_HOME == "$HOME/"* && $STATE_HOME == "$HOME/"* ]] || die 'Les dossiers XDG doivent se trouver sous le dossier personnel pour cette procédure.'
+  [[ $CONFIG_HOME != "$STATE_HOME" && $CONFIG_HOME != "$STATE_HOME/"* && $STATE_HOME != "$CONFIG_HOME/"* ]] || die 'Les dossiers XDG de configuration et d’état doivent être distincts et sans imbrication'
+}
+validate_personal_paths
 USER_CONFIG=$CONFIG_HOME/umbriel/config.toml
 GUI_SETTINGS=$STATE_HOME/noctalia/settings.toml
 
@@ -151,7 +165,7 @@ resolve_packages() {
 }
 
 check_network_backend() {
-  local unit state rest
+  local unit state rest active_instances
   # Ne pas activer NetworkManager à côté d'un gestionnaire déjà en service.
   # Aucune connexion, aucun service actif n'est modifié par ce diagnostic.
   for unit in systemd-networkd.service connman.service dhcpcd.service; do
@@ -159,6 +173,16 @@ check_network_backend() {
       BLOCKERS+=("Gestionnaire réseau actif : $unit ; migration vers NetworkManager à préparer séparément.")
     fi
   done
+  # Une instance lancée manuellement peut être active sans être activée pour
+  # le prochain démarrage ; list-unit-files ne suffit pas à la détecter.
+  if active_instances=$(systemctl list-units --all --plain --no-legend --no-pager --state=active,activating 'dhcpcd@*.service' 2>/dev/null); then
+    while read -r unit rest; do
+      [[ -n $unit ]] || continue
+      BLOCKERS+=("Gestionnaire réseau actif : $unit ; migration vers NetworkManager à préparer séparément.")
+    done <<< "$active_instances"
+  else
+    BLOCKERS+=("Impossible de vérifier les instances dhcpcd actives ; diagnostic réseau incomplet.")
+  fi
   while read -r unit state rest; do
     case "$state" in
       enabled|enabled-runtime|linked|linked-runtime)
@@ -191,7 +215,7 @@ preflight() {
     command -v "$tool" >/dev/null || BLOCKERS+=("Outil requis absent : $tool")
   done
   [[ -d /run/systemd/system ]] || BLOCKERS+=("systemd doit être démarré.")
-  [[ -d $REPO_ROOT/dotfiles/user/umbriel && -r $REPO_ROOT/scripts/noctalia_dotfiles.py ]] ||
+  [[ -d $REPO_ROOT/dotfiles/user/umbriel && -r $REPO_ROOT/scripts/noctalia_dotfiles.py && -r $REPO_ROOT/scripts/kitty_source.py && -r $REPO_ROOT/scripts/profiles.py ]] ||
     BLOCKERS+=("Modules dotfiles ou outil de préparation absents du dépôt.")
   [[ -z ${NOCTALIA_CONFIG_HOME:-} || $NOCTALIA_CONFIG_HOME == "$CONFIG_HOME" ]] ||
     BLOCKERS+=("NOCTALIA_CONFIG_HOME redirige la configuration hors du profil prévu.")
@@ -254,15 +278,15 @@ show_package_categories() {
   printf '\nPaquets prévus par catégorie (toutes les catégories sont installées) :\n'
   show_package_category 'Bureau Wayland' 'Compositeur et interface du bureau.' "${PACKAGES_DESKTOP[@]}"
   show_package_category 'Écran de connexion' 'Service de connexion et interface Greeter.' "${PACKAGES_LOGIN[@]}"
-  show_package_category 'Applications' 'Terminal, navigateur, gestionnaire de fichiers et éditeur de texte.' "${PACKAGES_APPLICATIONS[@]}"
-  show_package_category 'Audio' 'Serveur audio, compatibilité PulseAudio et gestion des périphériques.' "${PACKAGES_AUDIO[@]}"
+  show_package_category 'Applications' 'Terminal, Firefox avec langue française, fichiers, Micro, Zed, PDF avec Papers, images avec Loupe et médias avec mpv.' "${PACKAGES_APPLICATIONS[@]}"
+  show_package_category 'Audio' 'Serveur audio, compatibilité PulseAudio/ALSA, périphériques et réglages détaillés avec Pavucontrol.' "${PACKAGES_AUDIO[@]}"
   show_package_category 'Réseau' 'Contrôles réseau de Noctalia via NetworkManager ; connexions conservées.' "${PACKAGES_NETWORK[@]}"
   show_package_category 'Trousseau de secrets' 'Stockage chiffré et interface de gestion des clés.' "${PACKAGES_SECRETS[@]}"
   show_package_category 'Intégration du bureau' 'Communication, autorisations, applications X11, ouverture des fichiers et presse-papiers.' "${PACKAGES_INTEGRATION[@]}"
-  show_package_category 'Services de fichiers' 'Corbeille, accès aux volumes et miniatures.' "${PACKAGES_FILES[@]}"
+  show_package_category 'Services de fichiers' 'Corbeille, volumes, partages SMB, appareils MTP, miniatures vidéo et archives (dont ZIP).' "${PACKAGES_FILES[@]}"
   show_package_category 'Portails XDG' 'Partage d’écran, captures et dialogues pour les applications.' "${PACKAGES_PORTALS[@]}"
   show_package_category 'Matériel' 'Contrôle de luminosité et informations de batterie/alimentation.' "${PACKAGES_HARDWARE[@]}"
-  show_package_category 'Polices et icônes' 'Texte, emojis et icônes des applications.' "${PACKAGES_APPEARANCE[@]}"
+  show_package_category 'Polices et icônes' 'Texte, Liberation, JetBrainsMono Nerd Font pour Kitty, emojis et icônes.' "${PACKAGES_APPEARANCE[@]}"
   show_package_category 'Préparation des configurations' 'Génération et validation TOML des modules.' "${PACKAGES_SETUP[@]}"
   printf '\n'
 }
@@ -271,7 +295,10 @@ show_plan() {
   printf 'Cible : %s ; session détectée : %s\n' "$(uname -s)" "${XDG_CURRENT_DESKTOP:-aucune déclarée}"
   printf 'Compte : %s ; configuration : %s\n' "$(id -un)" "$USER_CONFIG"
   printf 'Clavier Umbriel et Greeter : %s / %s\n' "$KEYBOARD" "${VARIANT:-défaut}"
-  printf 'Profils personnels copiés depuis dotfiles/user : %s\n' "${CONFIG_ITEMS[*]}"
+  printf 'Profils personnels gérés (Kitty depuis le dépôt CachyOS, les autres depuis dotfiles/user) : %s\n' "${CONFIG_ITEMS[*]}"
+  printf 'Source Kitty : https://github.com/Masternaka/CachyOS ; branche main ; dossier Dotfiles/kitty/.config/kitty.\n'
+  printf 'Après confirmation : récupération de main, commit enregistré, contrôle des inclusions et adaptation des chemins dans les copies.\n'
+  printf 'Aucun téléchargement Kitty pendant --plan ou --print-config ; échec de récupération = arrêt avant remplacement des profils.\n'
   show_package_categories
   if ((${#PACKAGE_SOURCES[@]})); then
     printf 'Provenance selon les bases locales : paquet | dépôt | version\n'
@@ -286,6 +313,7 @@ Sauvegarde privée : /var/lib/cachy-setup/noctalia-<date>-<identifiant>/
 Remplacement des profils gérés sous $CONFIG_HOME et de /etc/greetd/config.toml.
 Sauvegarde et retrait des réglages GUI prioritaires : $GUI_SETTINGS (si présents).
 Assemblage des modules de Greeter dans /var/lib/noctalia-greeter/greeter.toml.
+Greeter 1.7.0 minimum requis pour l'horloge : heure sur 24 heures et date au-dessus du panneau.
 Activation audio et socket du trousseau pour le compte courant : ${USER_UNITS[*]} (sans --now).
 Activation de NetworkManager au prochain démarrage, sans arrêt du réseau actuel.
 Activation de greetd au prochain démarrage, sans --now ; cible graphical.target.
@@ -343,7 +371,10 @@ for entry in greetd greeter-state noctalia-settings; do
   fi
 done
 sudo pacman -Syu --needed "${REPO_TARGETS[@]}"
-for tool in umbriel start-umbriel noctalia noctalia-greeter-session noctalia-greeter-apply-appearance kitty firefox thunar mousepad python3 wl-copy brightnessctl nmcli gnome-keyring-daemon seahorse; do
+# Lecture de la base installée uniquement ; refuser une ancienne version avant
+# toute copie d'un profil contenant les réglages d'horloge apparus en 1.7.0.
+pacman -T 'noctalia-greeter>=1.7.0' >/dev/null || die 'Greeter 1.7.0 minimum requis pour la section clock ; configurations non remplacées.'
+for tool in umbriel start-umbriel noctalia noctalia-greeter-session noctalia-greeter-apply-appearance kitty kitten firefox thunar micro zeditor papers loupe mpv xarchiver zip unzip pavucontrol ffmpegthumbnailer python3 wl-copy brightnessctl nmcli gnome-keyring-daemon seahorse; do
   [[ -x /usr/bin/$tool ]] || die "Exécutable du paquet absent : /usr/bin/$tool ; greetd non activé."
 done
 # Recharger uniquement les définitions d'unités, sans démarrer de service.
@@ -355,15 +386,22 @@ done
 python3 -B "$REPO_ROOT/scripts/noctalia_dotfiles.py" --check-pam-root /etc/pam.d
 getent passwd greeter >/dev/null || die 'Compte système greeter absent ; vérifier les paquets.'
 [[ -f /usr/share/wayland-sessions/umbriel.desktop ]] || die 'Session Umbriel du paquet absente.'
-for desktop in firefox.desktop thunar.desktop org.xfce.mousepad.desktop; do
+for desktop in firefox.desktop thunar.desktop dev.zed.Zed.desktop org.gnome.Papers.desktop org.gnome.Loupe.desktop mpv.desktop; do
   [[ -f /usr/share/applications/$desktop ]] || die "Identifiant d'application absent : $desktop ; associations non appliquées."
 done
 # Préparer et vérifier les modules avant de remplacer les configurations actives.
 STAGE=$(mktemp -d "${TMPDIR:-/tmp}/cachy-noctalia.XXXXXX")
 trap '[[ -z $STAGE ]] || rm -rf -- "$STAGE"' EXIT
-python3 -B "$REPO_ROOT/scripts/noctalia_dotfiles.py" --keyboard "$KEYBOARD" --variant "$VARIANT" --check --output "$STAGE/rendered"
+python3 -B "$REPO_ROOT/scripts/noctalia_dotfiles.py" --keyboard "$KEYBOARD" --variant "$VARIANT" --fetch-kitty --check --output "$STAGE/rendered"
+sudo cp -a -- "$STAGE/rendered/system/kitty-source.json" "$BACKUP/kitty-source.json"
 validate_profiles "$STAGE/rendered/user" "$STAGE/validation-before-copy" validation-before-copy
 sudo cp -a -- "$STAGE/rendered" "$BACKUP/proposed"
+if ((REPLACE)); then
+  python3 -B "$REPO_ROOT/scripts/profiles.py" compare "$STAGE/rendered/user"
+  printf 'Les paquets ont déjà été traités. Pour remplacer les profils affichés et Greeter après sauvegarde, saisir REMPLACER : '
+  read -r answer
+  [[ $answer == REMPLACER ]] || die 'Remplacement annulé ; les profils sont conservés, la transaction de paquets reste effectuée.'
+fi
 install_user_dotfiles "$STAGE/rendered"
 validate_profiles "$CONFIG_HOME" "$STAGE/validation-installed" validation-installed
 sudo install -d -m 0755 /etc/greetd

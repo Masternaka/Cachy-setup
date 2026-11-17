@@ -3,3 +3,25 @@ format = "{:%H:%M — %d/%m/%Y}"
 
 [widget.media]
 hide_when_no_media = true
+# Borner les titres pour garder de la place dans les barres Full HD.
+max_length = 160
+title_scroll = "on_hover"
+
+[widget.active_window]
+max_length = 220
+title_scroll = "on_hover"
+
+# Afficher les noms, particulièrement 6 à 10 sur HDMI-A-2 : les indices locaux
+# des cinq espaces de cet écran sont 1 à 5 et ne sont pas les noms souhaités.
+[widget.workspaces]
+show_labels = true
+label_source = "name"
+max_label_chars = 2
+labels_only_when_occupied = false
+hide_when_empty = false
+show_all_outputs = false
+
+# Le témoin apparaît uniquement pendant une capture micro, caméra ou écran
+# détectée via PipeWire ; ce n'est pas un blocage des périphériques.
+[widget.privacy]
+hide_inactive = true

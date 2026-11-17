@@ -8,17 +8,22 @@ Limiter les changements à ce périmètre. Le développement d’applications ou
 
 ## Organisation
 
-- `dotfiles/` : configurations modulaires du bureau Umbriel/Noctalia, de Greeter et des applications. Consulter `dotfiles/README.md` avant de les modifier.
+- `dotfiles/` : configurations modulaires du bureau Umbriel/Noctalia, de Greeter et des applications. Consulter `docs/configuration.md` avant de les modifier.
 - `scripts/umbriel_setup.sh` : installation du bureau après CachyOS « No Desktop », avec aperçu par défaut, confirmation, sauvegardes et activation au prochain démarrage.
 - `scripts/noctalia_dotfiles.py` : préparation des copies, vérification TOML et inclusions, appels aux validateurs natifs et lecture des inclusions PAM. Ce fichier n'installe aucun paquet.
+- `scripts/kitty_source.py` : récupération explicite de Kitty depuis Masternaka/CachyOS/main pour les copies préparées ; aucune écriture dans les profils actifs. `--plan` et `--print-config` restent sans réseau. Ne pas réintroduire une seconde configuration Kitty locale.
+- `scripts/profiles.py` : maintenance ciblée utilisateur, différences, diagnostic en lecture seule et restauration à partir des sauvegardes privées. Aucun paquet, service ou Greeter géré ; consulter `docs/maintenance.md`.
+- `scripts/check_docs.py` : contrôle des chemins et ancres Markdown locaux, sans réseau ni écriture.
+- `docs/validation-cachyos.md` : fiche des essais réels ; ne jamais transformer un test simulé en résultat matériel réussi.
 - Autres fichiers de `scripts/` : scripts de configuration et de personnalisation, à examiner individuellement.
 - `README.md` : présentation du dépôt et état des fonctionnalités disponibles.
+- `docs/configuration.md` : carte des modules, personnalisation et raccourcis quotidiens.
 - `docs/noctalia.md` : guide canonique d'installation, effets, prérequis, sauvegardes et retour arrière.
 - `docs/verification-noctalia-2026-11-10.md` : vérification documentaire datée, preuves locales et validations restantes sur CachyOS.
 - `tests/test_umbriel_setup.py` : contrôles isolés des scripts et modules ; services, paquets et validateurs Linux simulés lorsque nécessaire.
 - `.github/copilot-instructions.md` : directives Copilot cohérentes avec le présent guide ; ne pas y maintenir une seconde procédure d'installation.
 
-Les scripts SSH et disques contiennent encore des références à Omarchy et à des guides absents. Ne pas les présenter comme validés sur CachyOS. Leur adaptation constitue un travail distinct de la rédaction de cette documentation.
+Les scripts SSH et disques sont adaptés des scripts 01 et 10 de Masternaka/CachyOS. Consulter docs/ssh.md et docs/disques.md : SSH conserve la configuration existante ; les disques reprennent quatre UUID personnels et conservent les groupes. Ne pas les présenter comme validés sur CachyOS réel. Les tests de tests/test_system_setup.py restent isolés et simulés.
 
 ## Règle impérative : autorisation préalable
 
@@ -48,7 +53,7 @@ Les scripts SSH et disques contiennent encore des références à Omarchy et à 
 
 - Cibler le système CachyOS déjà installé sur disque, avec compte utilisateur, accès sudo, pilotes et Internet fonctionnels. Ne pas transformer ce dépôt en installateur du système de base.
 - Conserver la pile choisie : Umbriel, Noctalia v5 et Noctalia Greeter. Niri sert de référence d'organisation des modules ; ne pas ajouter Niri, Hyprland, UWSM ou un autre bureau par supposition.
-- Garder les configurations versionnées dans `dotfiles/`, avec points d'entrée et modules. Umbriel, Noctalia et Kitty disposent d'inclusions ; les modules Greeter sont assemblés lors de la préparation. Éviter de réintroduire un profil monolithique dans le script Bash.
+- Garder les configurations locales versionnées dans `dotfiles/`, avec points d'entrée et modules. Kitty provient uniquement de Masternaka/CachyOS/main : enregistrer le commit utilisé et conserver les contrôles, sauvegardes et limites de récupération. Umbriel, Noctalia et Kitty disposent d'inclusions ; les modules Greeter sont assemblés lors de la préparation. Éviter de réintroduire un profil monolithique dans le script Bash.
 - Utiliser des chemins relatifs pour les inclusions, conserver la cohérence du clavier entre Umbriel et Greeter et laisser la détection des écrans/GPU automatique tant que les identifiants de la cible ne sont pas connus.
 - Démarrer la session avec le `start-umbriel` du paquet, puis Noctalia une seule fois via l'autostart d'Umbriel. greetd doit lancer `noctalia-greeter-session`, pas directement l'exécutable d'interface.
 - Conserver les contrôles des unités de session, de leur ordre de démarrage et de la pile PAM fournie par la distribution. Le fonctionnement actuel ne réécrit pas PAM et laisse le déverrouillage du trousseau interactif ; toute évolution doit être documentée avec ses effets dans l'aperçu avant application.
@@ -72,7 +77,8 @@ Privilégier les contrôles de syntaxe et les tests isolés sans effet sur la ma
 bash -n scripts/ssh_setup.sh
 bash -n scripts/disk_setup.sh
 bash -n scripts/umbriel_setup.sh
-python3 -B tests/test_umbriel_setup.py
+python3 -B -m unittest discover -s tests
+python3 -B scripts/check_docs.py
 ```
 
 Lire un script avant d’exécuter son mode d’aide ou de prévisualisation afin de vérifier l’absence d’effets de bord. Un test ne doit pas installer de dépendance, monter un disque, changer des droits ou activer un service sans autorisation préalable pour cette intervention.

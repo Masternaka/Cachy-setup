@@ -1,0 +1,8 @@
+# Pris en charge depuis Greeter 1.7.0 ; voir l'exemple officiel de cette version.
+# https://github.com/noctalia-dev/noctalia-greeter/blob/v1.7.0/examples/greeter.toml
+[clock]
+enabled = true
+position = "above-panel"
+# Heure sur 24 heures ; jour et date selon la locale du processus Greeter.
+time_format = "{:%H:%M}"
+date_format = "%A, %x"

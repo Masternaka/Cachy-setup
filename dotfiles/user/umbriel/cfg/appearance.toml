@@ -1,9 +1,19 @@
 [appearance]
+prefer_no_csd = true
 border_width = 2
 corner_radius = 10
 
+# Donner des commandes souris aux fenêtres qui négocient une décoration serveur,
+# tout en respectant les applications qui dessinent leur propre en-tête.
+[appearance.title_bar]
+mode = "negotiated"
+height = 28
+buttons = ["minimize", "maximize", "close"]
+button_glyph = "always"
+
 [appearance.blur]
 enabled = true
+optimized = true
 radius = 3
 
 # Noctalia anime lui-même ses panneaux.

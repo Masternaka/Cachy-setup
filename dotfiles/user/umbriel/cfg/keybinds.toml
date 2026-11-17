@@ -1,8 +1,10 @@
 [keybinds]
 "Mod+Return" = { action = "spawn kitty", repeat = false }
+# Afficher ou masquer le terminal déroulant, sans basculements répétés au maintien.
+"Mod+F12" = { action = "spawn kitten quick-access-terminal", repeat = false }
 "Mod+E" = { action = "spawn thunar", repeat = false }
 "Mod+B" = { action = "spawn firefox", repeat = false }
-"Mod+Shift+E" = { action = "spawn mousepad", repeat = false }
+"Mod+Shift+E" = { action = "spawn zeditor", repeat = false }
 "Mod+Space" = { action = "spawn noctalia msg panel-toggle launcher", repeat = false }
 "Mod+S" = { action = "spawn noctalia msg panel-toggle control-center", repeat = false }
 "Mod+Comma" = { action = "spawn noctalia msg settings-toggle", repeat = false }
@@ -29,3 +31,35 @@
 "Mod+T" = { action = "window-toggle-floating", repeat = false }
 "Mod+R" = "window-cycle-primary-extent"
 "Mod+O" = { action = "overview-toggle", repeat = false }
+
+# Aide intégrée et relecture des fichiers (qui sont aussi surveillés automatiquement).
+"Mod+F1" = { action = "cheatsheet-toggle", repeat = false }
+"Mod+Ctrl+R" = { action = "config-reload", repeat = false }
+
+# Les flèches simples restent dans le pavage ; Ctrl cible explicitement l'écran.
+"Mod+Ctrl+Left" = "output-focus-left"
+"Mod+Ctrl+Right" = "output-focus-right"
+"Mod+Ctrl+Shift+Left" = { action = "window-move-to-output-left", repeat = false }
+"Mod+Ctrl+Shift+Right" = { action = "window-move-to-output-right", repeat = false }
+
+# Largeur complète, retour aux tailles prédéfinies et redimensionnement par pas.
+"Mod+M" = { action = "window-toggle-maximize", repeat = false }
+"Mod+Shift+R" = "window-cycle-primary-extent-back"
+"Mod+Alt+Left" = "window-modify-primary-extent -0.05"
+"Mod+Alt+Right" = "window-modify-primary-extent +0.05"
+"Mod+Alt+Up" = "window-modify-secondary-extent -0.05"
+"Mod+Alt+Down" = "window-modify-secondary-extent +0.05"
+"Mod+C" = { action = "column-center", repeat = false }
+
+# Empiler ou extraire une fenêtre d'une colonne, puis présenter le groupe en onglets.
+# Ctrl+Virgule évite le raccourci Super+Virgule déjà réservé aux réglages Noctalia.
+"Mod+Ctrl+Comma" = { action = "window-consume-or-expel-left", repeat = false }
+"Mod+Ctrl+Period" = { action = "window-consume-or-expel-right", repeat = false }
+"Mod+W" = { action = "column-toggle-tabbed", repeat = false }
+"Mod+Alt+Page_Up" = "column-focus-tab-previous"
+"Mod+Alt+Page_Down" = "column-focus-tab-next"
+
+# Retrouver les fenêtres flottantes et restaurer celles qui ont été minimisées.
+"Mod+Shift+T" = { action = "window-focus-switch-floating", repeat = false }
+"Mod+N" = { action = "window-minimize", repeat = false }
+"Mod+Shift+N" = { action = "window-restore-minimized", repeat = false }

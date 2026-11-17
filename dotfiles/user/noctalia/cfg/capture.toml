@@ -3,3 +3,8 @@
 copy_to_clipboard = true
 save_to_file = false
 pipe_to_command = false
+# Figer l'image facilite la sélection ; valider la région avant la copie.
+freeze_screen = true
+confirm_region = true
+show_region_hint = true
+show_region_dimensions = true

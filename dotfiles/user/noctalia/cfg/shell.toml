@@ -2,8 +2,46 @@
 polkit_agent = true
 clipboard_enabled = true
 clipboard_history_max_entries = 100
+# Garder une confirmation avant l'effacement de l'historique.
+clipboard_confirm_clear_history = true
 # Le shell démarre par l'autostart d'Umbriel, sans unité Noctalia supplémentaire.
 launch_apps_as_systemd_services = false
 
 [shell.greeter_sync]
 auto_sync = false
+
+# Accès direct aux applications déjà prévues par le script d'installation.
+[shell.launcher]
+default_view = "pinned"
+show_navigation_labels = true
+show_settings_button = true
+show_session_button = true
+pinned = ["firefox.desktop", "thunar.desktop", "dev.zed.Zed.desktop", "org.gnome.Papers.desktop", "org.gnome.Loupe.desktop", "mpv.desktop"]
+
+# Alt+Tab retrouve aussi les fenêtres des autres espaces et du deuxième écran.
+[shell.window_switcher]
+mru = true
+show_all_outputs = true
+current_workspace_only = false
+
+# Conserver le verrouillage intégré, y compris avant une mise en veille externe.
+# Aucun délai de veille automatique ni aucune règle PAM n'est ajouté ici.
+[lockscreen]
+enabled = true
+lock_before_suspend = true
+grace_period_seconds = 0
+
+# Éviter de dupliquer les notifications sur les deux moniteurs.
+[notification]
+enable_daemon = true
+show_app_name = true
+show_actions = true
+follow_focused_output = true
+max_visible = 3
+
+# Afficher les retours volume/luminosité sur l'écran utilisé.
+[osd]
+enabled = true
+follow_focused_output = true
+position = "top_center"
+hide_delay_ms = 1400

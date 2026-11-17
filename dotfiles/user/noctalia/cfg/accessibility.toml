@@ -1,5 +1,7 @@
 # Agrandissement des panneaux, du lanceur et des interfaces hors barre.
 # Ne modifie ni l'échelle de la barre ni celle des écrans dans Umbriel.
 # Valeur par défaut de Noctalia : 1.0.
+# Module actuellement non inclus dans config.toml : ui_scale = 1.20 reste
+# une préférence préparée. Décommenter son inclusion pour l'utiliser.
 [accessibility]
 ui_scale = 1.20

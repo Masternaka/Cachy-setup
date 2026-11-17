@@ -6,11 +6,12 @@ import os
 from pathlib import Path
 import re
 import subprocess
+from kitty_source import check_kitty_files, fetch_kitty
 
 ROOT = Path(__file__).resolve().parents[1] / "dotfiles"
 
 
-def render_files(keyboard="us", variant="", root=ROOT):
+def render_files(keyboard="ca", variant="", root=ROOT, kitty_files=None):
     if not re.fullmatch(r"[a-zA-Z0-9_-]+", keyboard):
         raise ValueError("Disposition XKB invalide")
     if not re.fullmatch(r"[a-zA-Z0-9_-]*", variant):
@@ -34,7 +35,10 @@ def render_files(keyboard="us", variant="", root=ROOT):
         raise ValueError("Modules Greeter absents")
     files["system/greeter.toml"] = "\n".join(
         "# Module : " + path.name + "\n" + render(path) for path in modules)
-    for required in ("user/umbriel/config.toml", "user/noctalia/config.toml", "user/kitty/kitty.conf"):
+    if kitty_files is not None:
+        check_kitty_files(kitty_files)
+        files.update({"user/kitty/" + name: content for name, content in kitty_files.items()})
+    for required in ("user/umbriel/config.toml", "user/noctalia/config.toml"):
         if required not in files:
             raise ValueError("Point d'entrée absent : " + required)
     return files
@@ -74,11 +78,9 @@ def check_files(files, toml_parser=None):
                 raise ValueError("Raccourci défini plusieurs fois : " + key)
             seen.add(key)
     includes("user/noctalia/config.toml")
-    for line in files["user/kitty/kitty.conf"].splitlines():
-        if line.startswith("include "):
-            target = "user/kitty/" + line.split(" ", 1)[1]
-            if target not in files:
-                raise ValueError("Include Kitty absent : " + target)
+    kitty_files = {name[len("user/kitty/"):]: content for name, content in files.items() if name.startswith("user/kitty/")}
+    if kitty_files:
+        check_kitty_files(kitty_files)
 
 
 def write_files(files, destination):
@@ -92,7 +94,22 @@ def write_files(files, destination):
             output.write(text)
 
 
-def check_native_profiles(config_home, logs, runner=subprocess.run):
+def validate_native_result(name, result):
+    """Interpréter un diagnostic sans écrire de fichier ni corriger le profil."""
+    output = result.stdout + result.stderr
+    if result.returncode:
+        raise ValueError("Validation native échouée : " + name)
+    if name == "umbriel":
+        report = json.loads(result.stdout)
+        if not isinstance(report, dict) or report.get("valid") is not True or report.get("diagnostics"):
+            raise ValueError("Diagnostic Umbriel à corriger")
+    else:
+        plain = re.sub(r"\x1b\[[0-9;]*m", "", output)
+        if re.search(r"(?im)^\s*WARN(?:ING)?\b", plain):
+            raise ValueError("Avertissement Noctalia à corriger")
+
+
+def check_native_profiles(config_home, logs, runner=subprocess.run, profiles=("noctalia", "umbriel")):
     """Contrôler les schémas des binaires installés, sans démarrer de bureau."""
     config_home = Path(config_home).resolve()
     logs = Path(logs)
@@ -102,20 +119,20 @@ def check_native_profiles(config_home, logs, runner=subprocess.run):
         ("umbriel", ["/usr/bin/umbriel", "config", "validate", "--json"]),
     )
     for name, command in commands:
+        if name not in profiles:
+            continue
         env = dict(os.environ, XDG_CONFIG_HOME=str(config_home), LC_ALL="C", NO_COLOR="1")
-        result = runner(command, env=env, capture_output=True, text=True, timeout=60)
+        try:
+            result = runner(command, env=env, capture_output=True, text=True, timeout=60)
+        except (OSError, subprocess.TimeoutExpired) as error:
+            (logs / (name + ".log")).write_text(str(error), encoding="utf-8")
+            raise
         output = result.stdout + result.stderr
         (logs / (name + ".log")).write_text(output, encoding="utf-8")
-        if result.returncode:
-            raise ValueError("Validation native échouée : " + name + " ; voir " + str(logs / (name + ".log")))
-        if name == "umbriel":
-            report = json.loads(result.stdout)
-            if report.get("valid") is not True or report.get("diagnostics"):
-                raise ValueError("Diagnostic Umbriel à corriger ; voir " + str(logs / "umbriel.log"))
-        else:
-            plain = re.sub(r"\x1b\[[0-9;]*m", "", output)
-            if re.search(r"(?im)^\s*WARN(?:ING)?\b", plain):
-                raise ValueError("Avertissement Noctalia à corriger ; voir " + str(logs / "noctalia.log"))
+        try:
+            validate_native_result(name, result)
+        except ValueError as error:
+            raise ValueError(str(error) + " ; voir " + str(logs / (name + ".log"))) from error
 
 
 def check_pam_session(pam_root):
@@ -146,16 +163,19 @@ def check_pam_session(pam_root):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--keyboard", default="us")
+    parser.add_argument("--keyboard", default="ca")
     parser.add_argument("--variant", default="")
     parser.add_argument("--check", action="store_true", help="Vérifier TOML, inclusions et raccourcis")
     parser.add_argument("--output", type=Path, help="Écrire dans un nouveau dossier de préparation")
     parser.add_argument("--print", action="store_true", dest="print_files", help="Afficher chaque fichier séparément")
+    parser.add_argument("--fetch-kitty", action="store_true", help="Récupérer Kitty depuis CachyOS/main (réseau explicite, avec --output)")
     parser.add_argument("--check-native", type=Path, help="Valider un dossier XDG avec les binaires installés")
     parser.add_argument("--logs", type=Path, help="Dossier des journaux de validation native")
     parser.add_argument("--check-pam-root", type=Path, help="Vérifier les inclusions PAM de greetd sans modification")
     args = parser.parse_args()
     try:
+        if args.fetch_kitty and (not args.output or args.check_native or args.check_pam_root):
+            raise ValueError("--fetch-kitty exige --output pour une préparation distincte")
         if args.check_native:
             if not args.logs:
                 raise ValueError("--logs est requis avec --check-native")
@@ -166,7 +186,12 @@ def main():
             check_pam_session(args.check_pam_root)
             print("Session PAM greetd reliée à systemd")
             return
-        files = render_files(args.keyboard, args.variant)
+        if args.output and (args.output.exists() or args.output.is_symlink()):
+            raise ValueError("Dossier de préparation déjà présent")
+        kitty_files, provenance = fetch_kitty() if args.fetch_kitty else (None, None)
+        files = render_files(args.keyboard, args.variant, kitty_files=kitty_files)
+        if provenance is not None:
+            files["system/kitty-source.json"] = json.dumps(provenance, ensure_ascii=False, indent=2) + "\n"
         if args.check:
             check_files(files)
         if args.output:
@@ -174,6 +199,8 @@ def main():
         if args.print_files:
             for name, text in files.items():
                 print("\n### " + name + "\n" + text, end="")
+            if kitty_files is None:
+                print("\n# Kitty : source externe Masternaka/CachyOS, branche main ; récupération seulement après confirmation avec --apply.")
         if not (args.output or args.print_files):
             print(str(len(files)) + " fichiers préparés" + (" et vérifiés" if args.check else ""))
     except (ValueError, OSError, subprocess.TimeoutExpired) as error:

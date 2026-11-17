@@ -1,5 +1,11 @@
+# Noctalia fournit déjà le shell et l'agent polkit : un seul lancement suffit.
+# Ne pas ajouter de seconde instance via un service utilisateur ou un autre module.
 [general]
 autostart = ["noctalia"]
 mod_key = "Super"
 xwayland = true
 show_cheatsheet = true
+# Garder les dialogues avec leur application et éviter les prises de focus
+# demandées en arrière-plan par une application déjà lancée.
+attach_modal_dialogs = true
+focus_on_activate = false

@@ -1,6 +1,11 @@
 [bar.default]
 position = "top"
 thickness = 34
+# Barre visible et espace réservé pour ne pas recouvrir les fenêtres.
+enabled = true
+auto_hide = false
+reserve_space = true
+show_tooltip = true
 start = ["launcher", "workspaces", "active_window"]
 center = ["clock"]
-end = ["media", "tray", "notifications", "clipboard", "network", "volume", "brightness", "battery", "control-center", "session"]
+end = ["media", "tray", "privacy", "notifications", "clipboard", "network", "volume", "brightness", "battery", "control-center", "session"]

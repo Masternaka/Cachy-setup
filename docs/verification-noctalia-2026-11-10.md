@@ -1,5 +1,9 @@
 # Vérification de l'installation Noctalia après « No Desktop »
 
+[Accueil](../README.md) · [Guide d’installation maintenu](noctalia.md)
+
+> Rapport historique du 10 novembre 2026. Les versions et résultats ci-dessous sont ceux de cette date ; consulter les guides pour les évolutions suivantes.
+
 Vérification documentaire et locale du 10 novembre 2026. Le parcours préparé est : **installation complète de CachyOS sans bureau → console utilisateur → script avec confirmation → redémarrage manuel → Greeter → Umbriel avec Noctalia**.
 
 Les configurations ont été comparées aux documentations officielles et, pour les écarts entre documentation rolling et paquets, aux sources des versions relevées. La préparation couvre le bureau et les applications de base. Le parcours graphique sur une installation CachyOS réelle n'a pas été exécuté depuis cette machine macOS.

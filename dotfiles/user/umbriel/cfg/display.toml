@@ -1,5 +1,29 @@
-# Aucun connecteur, mode ou GPU imposé : détection automatique d'Umbriel.
-# Examiner `umbriel outputs`, puis mettre les réglages matériels dans local.toml.
-# Exemple à adapter :
-# [output."DP-1"]
-# scale = 1.25
+# Deux écrans personnels Full HD, côte à côte et alignés en haut.
+# Référence : https://docs.noctalia.dev/umbriel/outputs/
+# Examiner `umbriel outputs` sur la cible pour confirmer connecteurs et modes.
+# Les positions sont logiques : à scale = 1.0, chaque écran occupe 1920 × 1080.
+# Le GPU reste détecté automatiquement ; aucun périphérique DRM n'est imposé.
+# Un réglage personnel dans local.toml peut remplacer les valeurs ci-dessous.
+
+# Écran de gauche.
+[output."DP-1"]
+enabled = true
+mode = "1920x1080@60"
+position = [0, 0]
+scale = 1.0
+transform = "normal"
+# Base SDR à fréquence fixe, sans déchirement volontaire de l'image.
+vrr = "disabled"
+hdr = "off"
+tearing = false
+
+# Écran de droite : son bord gauche touche le bord droit de DP-1.
+[output."HDMI-A-2"]
+enabled = true
+mode = "1920x1080@60"
+position = [1920, 0]
+scale = 1.0
+transform = "normal"
+vrr = "disabled"
+hdr = "off"
+tearing = false

@@ -1,9 +1,10 @@
 [keybinds]
+# Les commandes restent utilisables au verrouillage ; aucun changement de focus.
 "XF86AudioRaiseVolume" = { action = "spawn noctalia msg volume-up", allow_when_locked = true }
 "XF86AudioLowerVolume" = { action = "spawn noctalia msg volume-down", allow_when_locked = true }
-"XF86AudioMute" = { action = "spawn noctalia msg volume-mute", repeat = false }
-"XF86AudioPlay" = { action = "spawn noctalia msg media toggle", repeat = false }
-"XF86AudioNext" = "spawn noctalia msg media next"
-"XF86AudioPrev" = "spawn noctalia msg media previous"
-"XF86MonBrightnessUp" = "spawn noctalia msg brightness-up"
-"XF86MonBrightnessDown" = "spawn noctalia msg brightness-down"
+"XF86AudioMute" = { action = "spawn noctalia msg volume-mute", allow_when_locked = true, repeat = false }
+"XF86AudioPlay" = { action = "spawn noctalia msg media toggle", allow_when_locked = true, repeat = false }
+"XF86AudioNext" = { action = "spawn noctalia msg media next", allow_when_locked = true }
+"XF86AudioPrev" = { action = "spawn noctalia msg media previous", allow_when_locked = true }
+"XF86MonBrightnessUp" = { action = "spawn noctalia msg brightness-up", allow_when_locked = true }
+"XF86MonBrightnessDown" = { action = "spawn noctalia msg brightness-down", allow_when_locked = true }

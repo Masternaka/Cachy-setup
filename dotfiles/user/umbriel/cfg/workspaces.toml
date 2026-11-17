@@ -1,19 +1,38 @@
+# Dix espaces fixes, répartis sur les deux écrans personnels.
+# Référence : https://docs.noctalia.dev/umbriel/workspaces/
+# Les noms numériques exigent --name : un nombre nu désigne une position
+# locale à un écran (sur HDMI-A-2, le nom "6" occupe la position 1).
+# Ces tables complètent celles du module display.toml par fusion des clés.
+[output."DP-1"]
+workspaces = ["1", "2", "3", "4", "5"]
+
+[output."HDMI-A-2"]
+workspaces = ["6", "7", "8", "9", "10"]
+
+# Super+0 sélectionne le workspace 10 ; Maj déplace la fenêtre courante.
+# --output cible le bon écran même si le focus se trouve sur l’autre.
 [keybinds]
-"Mod+1" = "workspace-switch 1"
-"Mod+2" = "workspace-switch 2"
-"Mod+3" = "workspace-switch 3"
-"Mod+4" = "workspace-switch 4"
-"Mod+5" = "workspace-switch 5"
-"Mod+6" = "workspace-switch 6"
-"Mod+7" = "workspace-switch 7"
-"Mod+8" = "workspace-switch 8"
-"Mod+9" = "workspace-switch 9"
-"Mod+Shift+1" = "window-move-to-workspace 1"
-"Mod+Shift+2" = "window-move-to-workspace 2"
-"Mod+Shift+3" = "window-move-to-workspace 3"
-"Mod+Shift+4" = "window-move-to-workspace 4"
-"Mod+Shift+5" = "window-move-to-workspace 5"
-"Mod+Shift+6" = "window-move-to-workspace 6"
-"Mod+Shift+7" = "window-move-to-workspace 7"
-"Mod+Shift+8" = "window-move-to-workspace 8"
-"Mod+Shift+9" = "window-move-to-workspace 9"
+"Mod+1" = "workspace-switch --name 1 --output DP-1"
+"Mod+2" = "workspace-switch --name 2 --output DP-1"
+"Mod+3" = "workspace-switch --name 3 --output DP-1"
+"Mod+4" = "workspace-switch --name 4 --output DP-1"
+"Mod+5" = "workspace-switch --name 5 --output DP-1"
+"Mod+6" = "workspace-switch --name 6 --output HDMI-A-2"
+"Mod+7" = "workspace-switch --name 7 --output HDMI-A-2"
+"Mod+8" = "workspace-switch --name 8 --output HDMI-A-2"
+"Mod+9" = "workspace-switch --name 9 --output HDMI-A-2"
+"Mod+0" = "workspace-switch --name 10 --output HDMI-A-2"
+"Mod+Shift+1" = "window-move-to-workspace --name 1 --output DP-1"
+"Mod+Shift+2" = "window-move-to-workspace --name 2 --output DP-1"
+"Mod+Shift+3" = "window-move-to-workspace --name 3 --output DP-1"
+"Mod+Shift+4" = "window-move-to-workspace --name 4 --output DP-1"
+"Mod+Shift+5" = "window-move-to-workspace --name 5 --output DP-1"
+"Mod+Shift+6" = "window-move-to-workspace --name 6 --output HDMI-A-2"
+"Mod+Shift+7" = "window-move-to-workspace --name 7 --output HDMI-A-2"
+"Mod+Shift+8" = "window-move-to-workspace --name 8 --output HDMI-A-2"
+"Mod+Shift+9" = "window-move-to-workspace --name 9 --output HDMI-A-2"
+"Mod+Shift+0" = "window-move-to-workspace --name 10 --output HDMI-A-2"
+
+# Parcourir les cinq espaces de l'écran courant sans déplacer l'inventaire fixe.
+"Mod+Page_Up" = "workspace-previous"
+"Mod+Page_Down" = "workspace-next"

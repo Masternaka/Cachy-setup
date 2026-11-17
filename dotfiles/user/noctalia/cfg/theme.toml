@@ -1,4 +1,5 @@
 # Palette intégrée : aucun fichier de fond d'écran externe n'est requis.
+# La synchronisation vers Greeter reste désactivée dans shell.toml.
 [theme]
 mode = "dark"
 source = "builtin"
